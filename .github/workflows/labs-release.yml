@@ -103,7 +103,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           export DIST="$PWD/dist/release"
-          packaging/linux/package.sh --formats "appimage tar"
+          bash packaging/linux/package.sh --formats "appimage tar"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.plat }}
@@ -126,7 +126,7 @@ jobs:
           set -euo pipefail
           [ -n "$MAILCRAFT_RELEASE_KEY" ] || { echo "::error::MAILCRAFT_RELEASE_KEY is not set"; exit 1; }
           (cd assets && rm -f SHA256SUMS.txt SHA256SUMS.txt.sig && sha256sum -- * | tee SHA256SUMS.txt)
-          packaging/sign-sums.sh assets
+          bash packaging/sign-sums.sh assets
           ls -l assets
       - name: Publish release
         env:
