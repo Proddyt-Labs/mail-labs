@@ -30,7 +30,8 @@ use crate::http::{self, Request, Url};
 /// that updates itself takes nothing that isn't (`update_download`). An empty one is no key:
 /// with neither, nothing is ever downloaded. `cargo xtask release-key new` prints both
 /// (docs/releasing.md).
-pub const RELEASE_KEYS: [&str; 2] = ["Mu5RF5oJpFhDGfa5wpgznC39tDC8vbUbyNkiAMdluPQ=", "XV6WRgW06/mGhZCHhFVKMIEZDmLevQduZPLSj/UW5zI="];
+// Proddyt Labs fork: our own release keys (private halves offline), so this build updates from Proddyt-Labs/mail-labs.
+pub const RELEASE_KEYS: [&str; 2] = ["Jw2nexg3faHRGcDeYOGHy9yt7qZbJWeTBGYan0LszwU=", "6R75L4BnY5ez/mrIreTnGKVXvVSlcYYWU8AwFdwja3s="];
 
 /// The repository this build came from: `https://github.com/{owner}/{repo}`.
 pub const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
