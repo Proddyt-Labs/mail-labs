@@ -172,6 +172,7 @@ const ROWS: &[(&str, &str, Setup)] = &[
     ("ui.sync", r#"{"password": "x"}"#, Setup::None),
     // Calendars.
     ("calendar.removeCalendar", r#"{"id": $calendar}"#, Setup::None),
+    ("calendar.unsubscribe", r#"{"id": $calendar}"#, Setup::None),
     ("calendar.openShared", r#"{"address": "x@example.org"}"#, Setup::None),
     ("calendar.removeShared", r#"{"address": "x@example.org"}"#, Setup::None),
     ("calendar.hideListedCopy", r#"{"address": "x@example.org"}"#, Setup::None),

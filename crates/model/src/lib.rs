@@ -17,6 +17,7 @@ mod contact;
 pub mod dav;
 pub mod digital_signature;
 mod ews_server;
+mod feed;
 pub mod gmail;
 mod jmap_server;
 mod junk;
@@ -61,6 +62,9 @@ pub use calendar::{
 };
 pub use contact::{Contact, ContactKey, KeyKind, Labeled, PostalAddress};
 pub use ews_server::{EwsServer, is_exchange_online, is_microsoft_domain, is_within};
+pub use feed::{
+    FEED_EVERY_SECS, FeedUrlError, MAX_FEED_ERROR, MAX_FEED_EVENTS, MAX_FEED_URL, MAX_FEEDS, Subscription, check_feed_url, is_private_address,
+};
 pub use gmail::{GmailCategory, is_gmail_host};
 pub use jmap_server::{JmapServer, MAX_JMAP_ID, is_jmap_id};
 pub use junk::{Added, JunkList, JunkLists, MAX_JUNK_ENTRIES, junk_entry, junk_key};
@@ -169,6 +173,8 @@ mod auto_replies_tests;
 mod calendar_rights_tests;
 #[cfg(test)]
 mod contact_key_tests;
+#[cfg(test)]
+mod feed_tests;
 #[cfg(test)]
 mod gmail_tests;
 #[cfg(test)]

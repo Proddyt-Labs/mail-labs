@@ -158,6 +158,10 @@ pub struct Calendar {
     /// the server's refusal is what says no).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub online_providers: Option<Vec<OnlineProvider>>,
+    /// Set for an internet calendar: its events are those of the `.ics` file at the address, read
+    /// again from time to time and never changed here ([`crate::Subscription`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subscription: Option<crate::Subscription>,
 }
 
 fn is_edit(rights: &Rights) -> bool {
@@ -180,6 +184,8 @@ struct CalendarFile {
     group: String,
     own_color: Option<Rgb>,
     online_providers: Option<Vec<OnlineProvider>>,
+    #[serde(deserialize_with = "crate::sync::lenient")]
+    subscription: Option<crate::Subscription>,
 }
 
 impl From<CalendarFile> for Calendar {
@@ -195,6 +201,7 @@ impl From<CalendarFile> for Calendar {
             group: file.group,
             own_color: file.own_color,
             online_providers: file.online_providers,
+            subscription: file.subscription,
         }
     }
 }

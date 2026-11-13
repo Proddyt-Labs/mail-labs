@@ -310,6 +310,11 @@ const SAFE: &[&str] = &[
     "calendar.categorize",
     "calendar.fromMessage",
     "calendar.addCalendar",
+    // An internet calendar: the program reads the address (an https:// one, or a private network's),
+    // which only brings events in; the answer is data, and nothing is sent.
+    "calendar.subscribe",
+    "calendar.refreshSubscriptions",
+    "calendar.applyFeed",
     "calendar.showCalendar",
     "calendar.setCurrent",
     "calendar.invitation",
@@ -438,6 +443,7 @@ const DELETE: &[&str] = &[
     "folder.delete",
     "folder.empty",
     "calendar.removeCalendar",
+    "calendar.unsubscribe",
     // Local contacts, tasks, events and categories have no Deleted Items to come back from, and
     // undo is short-lived (what a server has been told of events and tasks clears it).
     "calendar.delete",

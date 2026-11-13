@@ -104,6 +104,9 @@ fn changing(s: &Session, v: &Value) -> Result<Event, CmdError> {
     if kept_by(s, &e).is_some() {
         writable(s, e.calendar)?;
     }
+    if s.mailbox.calendar(e.calendar).is_some_and(|c| c.subscription.is_some()) {
+        return Err(fail("an internet calendar can only be read: its events come from its address"));
+    }
     Ok(e)
 }
 
@@ -125,7 +128,7 @@ pub(crate) fn served(s: &Session, calendar: Id) -> bool {
 
 /// The first calendar that is the mailbox's own.
 fn own_calendar(s: &Session) -> Id {
-    let own = s.mailbox.calendars.iter().find(|c| remote::keeper(&s.mailbox, &c.origin).is_none());
+    let own = s.mailbox.calendars.iter().find(|c| c.subscription.is_none() && remote::keeper(&s.mailbox, &c.origin).is_none());
     own.map_or(0, |c| c.id)
 }
 
@@ -389,6 +392,9 @@ fn apply(s: &Session, e: &mut Event, v: &Value) -> Result<(), CmdError> {
     }
     if let Some(c) = p::id(v, "calendar") {
         let calendar = s.mailbox.calendar(c).ok_or_else(|| failed!("no calendar with id {id}", id = c))?;
+        if calendar.subscription.is_some() {
+            return Err(fail("an internet calendar can only be read: events can't go into it"));
+        }
         e.calendar = calendar.id;
     }
     meeting::apply(e, v)
@@ -1065,7 +1071,7 @@ fn remove_calendar(s: &mut Session, v: &Value) -> CmdResult {
     // A calendar that a server keeps would be back with the next download, its events with it.
     super::remote::changeable(&s.mailbox, &calendar.origin, "calendar")?;
     // One calendar of the mailbox's own stays, for new events to go in.
-    let own = |c: &Calendar| super::remote::keeper(&s.mailbox, &c.origin).is_none();
+    let own = |c: &Calendar| c.subscription.is_none() && super::remote::keeper(&s.mailbox, &c.origin).is_none();
     if !s.mailbox.calendars.iter().any(|c| c.id != id && own(c)) {
         return Err(fail("the last calendar can't be deleted"));
     }
@@ -1163,7 +1169,11 @@ fn set_current(s: &mut Session, v: &Value) -> CmdResult {
         None | Some(Value::Null) => 0,
         Some(_) => {
             let id = p::req_id(v, "id")?;
-            s.mailbox.calendar(id).map(|c| c.id).ok_or_else(|| failed!("no calendar with id {id}", id))?
+            let calendar = s.mailbox.calendar(id).ok_or_else(|| failed!("no calendar with id {id}", id))?;
+            if calendar.subscription.is_some() {
+                return Err(fail("an internet calendar can only be read: new events can't go into it"));
+            }
+            calendar.id
         }
     };
     Ok(json!({"id": current_calendar(s)}))

@@ -29,6 +29,8 @@ mod anchors;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 mod anchors_nss;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod calendar_feed;
+#[cfg(not(target_arch = "wasm32"))]
 mod cert;
 #[cfg(not(target_arch = "wasm32"))]
 mod discover;
@@ -283,6 +285,9 @@ mod native {
         Ok(())
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod calendar_feed_tests;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod password_tests;

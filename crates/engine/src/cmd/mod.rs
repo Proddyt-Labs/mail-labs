@@ -20,6 +20,9 @@ pub mod auto_replies;
 mod auto_replies_tests;
 pub mod calendar;
 pub mod calendar_extra;
+pub mod calendar_feed;
+#[cfg(test)]
+mod calendar_feed_tests;
 pub mod calendar_opened;
 pub mod calendar_settings;
 pub mod category;
@@ -183,6 +186,7 @@ pub fn registry() -> Registry {
     v.extend(view::specs());
     v.extend(calendar::specs());
     v.extend(calendar_extra::specs());
+    v.extend(calendar_feed::specs());
     v.extend(calendar_opened::specs());
     v.extend(calendar_settings::specs());
     v.extend(zones::specs());
