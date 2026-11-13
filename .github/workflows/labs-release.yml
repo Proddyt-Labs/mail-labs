@@ -125,7 +125,9 @@ jobs:
         run: |
           set -euo pipefail
           [ -n "$MAILCRAFT_RELEASE_KEY" ] || { echo "::error::MAILCRAFT_RELEASE_KEY is not set"; exit 1; }
-          (cd assets && rm -f SHA256SUMS.txt SHA256SUMS.txt.sig && sha256sum -- * | tee SHA256SUMS.txt)
+          (cd assets && rm -f SHA256SUMS.txt SHA256SUMS.txt.sig && find . -maxdepth 1 -type f -printf '%f
+' | LC_ALL=C sort | xargs -d '
+' sha256sum -- | tee SHA256SUMS.txt)
           bash packaging/sign-sums.sh assets
           ls -l assets
       - name: Publish release
