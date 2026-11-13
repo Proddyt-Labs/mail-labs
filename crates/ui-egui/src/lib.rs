@@ -86,6 +86,9 @@ mod ews_info_tests;
 pub mod ews_mail;
 pub mod ews_setup;
 pub mod favorites_sync;
+mod feed_sync;
+#[cfg(test)]
+mod feed_sync_tests;
 #[cfg(test)]
 mod field_drag_tests;
 pub mod files;
@@ -555,6 +558,11 @@ pub struct Services {
     /// browser's language in the browser build), whose region English dates are written for
     /// (#978). `None` (the tests, scripts): the language's own way.
     pub system_time_locale: Option<String>,
+    /// Desktop: read, on a background thread, the iCalendar file at an internet calendar's address
+    /// (`mailcraft_net::calendar_feed::fetch`: `https://`, or `http://` on a private network only);
+    /// the text, or why not in words that name no address, arrives through the channel and the host
+    /// wakes the UI ([`feed_sync`]). Absent in the browser and the tests: nothing is read.
+    pub feed_fetch: Option<Box<dyn Fn(String) -> Receiver<Result<String, String>>>>,
     /// Web: told the interface language's code (`en`) whenever it changes, for the page's
     /// `<html lang>`.
     pub on_language: Option<Box<dyn Fn(&str)>>,
@@ -996,7 +1004,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "ui.dialog",
         "Open Dialog",
         "Window",
-        r#"{"name": "commands"|"event"|"meeting"|"editEvent"|"contact"|"editContact"|"task"|"editTask"|"folder"|"goToDate"|"moveItems"|"copyItems"|"openCalendar"|"link"|"dateTime"|"wordCount"|"account"|"categories"|"rules"|"junkOptions"|"about"|"contributors"|"testers"|"reportProblem"|"proposeTime"|"forwardMeeting"|"proposals", …} (account: "email"?: string to start with, or "id": number for that account's settings, and with "page": "approval" the page that says what to do when its organisation has to approve MailCraft first (as `ui.approvalHelp` opens it); proposeTime: "id"?: number (an item of the calendar) | "message": number (an invitation in the mail); forwardMeeting: "id"?: number; proposals: "id"?: number | "message": number; moveItems, copyItems: the folder for the selected messages (Move to Folder and Copy to Folder without one), never other messages; junkOptions: "list"?: "safe"|"blocked" (the page it opens on); categories: "account"?: number (whose list it opens on); rules: "folder"?: number, "id"?: number (the New rule filled in to move the mail of that message's sender, default the selected one's, to the folder: Always Move Messages From This Sender) — the first two write to other people only from their own Propose and Send buttons)"#,
+        r#"{"name": "commands"|"event"|"meeting"|"editEvent"|"contact"|"editContact"|"task"|"editTask"|"folder"|"goToDate"|"moveItems"|"copyItems"|"openCalendar"|"subscribeCalendar"|"link"|"dateTime"|"wordCount"|"account"|"categories"|"rules"|"junkOptions"|"about"|"contributors"|"testers"|"reportProblem"|"proposeTime"|"forwardMeeting"|"proposals", …} (account: "email"?: string to start with, or "id": number for that account's settings, and with "page": "approval" the page that says what to do when its organisation has to approve MailCraft first (as `ui.approvalHelp` opens it); proposeTime: "id"?: number (an item of the calendar) | "message": number (an invitation in the mail); forwardMeeting: "id"?: number; proposals: "id"?: number | "message": number; moveItems, copyItems: the folder for the selected messages (Move to Folder and Copy to Folder without one), never other messages; junkOptions: "list"?: "safe"|"blocked" (the page it opens on); categories: "account"?: number (whose list it opens on); rules: "folder"?: number, "id"?: number (the New rule filled in to move the mail of that message's sender, default the selected one's, to the folder: Always Move Messages From This Sender) — the first two write to other people only from their own Propose and Send buttons)"#,
     ),
     ("ui.closeDialog", "Close Dialog", "Window", "{}"),
     ("ui.theme", "Interface Theme", "File › Options", r#"{"value": "light"|"dark"|"system"}"#),
@@ -1545,6 +1553,8 @@ pub struct MailApp {
     pub(crate) auto_replies: auto_replies::AutoRepliesSync,
     /// Opening other people's calendars by address (#70).
     open_shared: open_shared::OpenShared,
+    /// Reading the internet calendars that are subscribed to ([`feed_sync`]).
+    feeds: feed_sync::FeedSync,
     /// Where each shared mailbox's calendars stand with the owner's permission for them (#70):
     /// what a run found out, and what was asked.
     shared_calendar_perm: std::collections::HashMap<Id, shared_calendars::Permission>,
@@ -1846,6 +1856,7 @@ impl MailApp {
             rules: Default::default(),
             auto_replies: Default::default(),
             open_shared: Default::default(),
+            feeds: Default::default(),
             shared_calendar_perm: Default::default(),
             shared_calendar_tokens: Default::default(),
             shared_send_waits: Default::default(),
@@ -3201,6 +3212,11 @@ impl MailApp {
     /// password the first time, or has the owner sign in on the provider's page; the answer is
     /// kept in memory until the app closes, and by the operating system when that is wanted.
     fn start_sync(&mut self, p: &Value) -> Result<Value, String> {
+        // The owner's own Send/Receive reads the internet calendars again too (the one that starts by
+        // itself leaves them to their own three hours).
+        if p.get("quiet").and_then(Value::as_bool) != Some(true) {
+            feed_sync::send_receive_asked(self);
+        }
         self.drop_secrets_if_replaced();
         // A mailbox from a file: the owner confirms where it connects to first.
         if self.unconfirmed {
@@ -4715,6 +4731,7 @@ impl MailApp {
         if !self.data_removed {
             // Whether a new version is out, when the owner wants that known ([`updates`]).
             self.updates_tick(ctx);
+            self.feeds_tick();
             self.auto_sync();
             // The Inbox by itself every minute, between rounds (#276).
             self.inbox_check_tick();

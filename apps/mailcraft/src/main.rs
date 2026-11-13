@@ -1051,6 +1051,7 @@ fn services(
     let replies_ctx = ctx.clone();
     let ahead_ctx = ctx.clone();
     let update_ctx = ctx.clone();
+    let feed_ctx = ctx.clone();
     let download_ctx = ctx.clone();
     let report_ctx = ctx.clone();
     let copy_ctx = ctx.clone();
@@ -1269,6 +1270,11 @@ fn services(
         // nothing else, once a day when the owner wants that, or when they press Check for Updates.
         update_check: Some(Box::new(move |pre_releases| {
             background(&update_ctx, "update check", move || mailcraft_net::update::latest(pre_releases).map_err(|e| e.to_string()))
+        })),
+        // Internet calendars: the .ics file at the address the owner subscribed to, `https://` or a
+        // private network's `http://`, on a thread of its own.
+        feed_fetch: Some(Box::new(move |url| {
+            background(&feed_ctx, "internet calendar", move || mailcraft_net::calendar_feed::fetch(&url).map_err(|e| e.to_string()))
         })),
         // A build that isn't one of the project's packages (they name their commit) never asks.
         development_build: build_sha() == "dev",

@@ -573,7 +573,7 @@ msgid "Accounts"
 msgstr ""
 
 #. ribbon, ribbon location
-#: crates/engine/src/cmd/calendar.rs crates/engine/src/cmd/calendar/meeting.rs crates/engine/src/cmd/calendar_opened.rs crates/engine/src/cmd/compose.rs crates/engine/src/cmd/folder.rs crates/engine/src/cmd/mail.rs crates/engine/src/cmd/people.rs crates/engine/src/cmd/people_merge.rs crates/ui-egui/src/ribbon.rs
+#: crates/engine/src/cmd/calendar.rs crates/engine/src/cmd/calendar/meeting.rs crates/engine/src/cmd/calendar_feed.rs crates/engine/src/cmd/calendar_opened.rs crates/engine/src/cmd/compose.rs crates/engine/src/cmd/folder.rs crates/engine/src/cmd/mail.rs crates/engine/src/cmd/people.rs crates/engine/src/cmd/people_merge.rs crates/ui-egui/src/ribbon.rs
 msgid "Actions"
 msgstr ""
 
@@ -607,6 +607,11 @@ msgstr ""
 #. command label
 #: crates/engine/src/cmd/calendar.rs
 msgid "Add Calendar"
+msgstr ""
+
+#. command label, interface
+#: crates/engine/src/cmd/calendar_feed.rs crates/ui-egui/src/dialogs.rs
+msgid "Add Calendar from Internet"
 msgstr ""
 
 #. interface
@@ -724,6 +729,13 @@ msgstr ""
 msgid "Add filters"
 msgstr ""
 
+#. ribbon
+#: crates/ui-egui/src/ribbon.rs
+msgid ""
+"Add from\n"
+"Internet"
+msgstr ""
+
 #. interface
 #: crates/ui-egui/src/forms.rs
 msgid "Add from file…"
@@ -764,6 +776,11 @@ msgstr ""
 #. interface
 #: crates/ui-egui/src/dialogs.rs crates/ui-egui/src/forms.rs crates/ui-egui/src/merge_contacts.rs crates/ui-egui/src/people_view.rs
 msgid "Address"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/dialogs.rs
+msgid "Address of the calendar (an .ics file)"
 msgstr ""
 
 #. interface
@@ -1027,6 +1044,11 @@ msgid "An import is under way"
 msgstr ""
 
 #. interface
+#: crates/ui-egui/src/feed_sync.rs
+msgid "An internet calendar couldn't be updated: {why}"
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/calendar_view.rs
 msgid "An item that repeats can't be taken to another calendar this way. Hold Ctrl to copy this occurrence there, or use Move to Calendar in its menu for the whole series."
 msgstr ""
@@ -1161,6 +1183,11 @@ msgstr ""
 #. command label
 #: crates/engine/src/cmd/tasks_remote.rs
 msgid "Apply Downloaded To-dos"
+msgstr ""
+
+#. command label
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "Apply Internet Calendar"
 msgstr ""
 
 #. command label
@@ -3950,7 +3977,7 @@ msgid "Fold the calendars of this group away"
 msgstr ""
 
 #. interface, name, ribbon location
-#: crates/engine/src/cmd/calendar.rs crates/engine/src/cmd/calendar_opened.rs crates/engine/src/cmd/folder.rs crates/engine/src/cmd/mail.rs crates/engine/src/cmd/rules.rs crates/model/src/mailbox.rs crates/ui-egui/src/folder_properties.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/menubar.rs
+#: crates/engine/src/cmd/calendar.rs crates/engine/src/cmd/calendar_feed.rs crates/engine/src/cmd/calendar_opened.rs crates/engine/src/cmd/folder.rs crates/engine/src/cmd/mail.rs crates/engine/src/cmd/rules.rs crates/model/src/mailbox.rs crates/ui-egui/src/folder_properties.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/menubar.rs
 msgid "Folder"
 msgstr ""
 
@@ -4678,8 +4705,13 @@ msgstr ""
 msgid "Hold Unsent Mail"
 msgstr ""
 
+#. interface
+#: crates/ui-egui/src/dialogs.rs
+msgid "Holidays"
+msgstr ""
+
 #. interface, ribbon location
-#: crates/engine/src/cmd/calendar.rs crates/engine/src/cmd/calendar/share.rs crates/engine/src/cmd/calendar_extra.rs crates/engine/src/cmd/calendar_settings.rs crates/engine/src/cmd/category.rs crates/engine/src/cmd/compose.rs crates/engine/src/cmd/gmail_move.rs crates/engine/src/cmd/junk.rs crates/engine/src/cmd/mail.rs crates/engine/src/cmd/people.rs crates/engine/src/cmd/people_merge.rs crates/engine/src/cmd/rules.rs crates/engine/src/cmd/snooze.rs crates/engine/src/cmd/tasks.rs crates/engine/src/cmd/view.rs crates/ui-egui/src/forms.rs
+#: crates/engine/src/cmd/calendar.rs crates/engine/src/cmd/calendar/share.rs crates/engine/src/cmd/calendar_extra.rs crates/engine/src/cmd/calendar_feed.rs crates/engine/src/cmd/calendar_settings.rs crates/engine/src/cmd/category.rs crates/engine/src/cmd/compose.rs crates/engine/src/cmd/gmail_move.rs crates/engine/src/cmd/junk.rs crates/engine/src/cmd/mail.rs crates/engine/src/cmd/people.rs crates/engine/src/cmd/people_merge.rs crates/engine/src/cmd/rules.rs crates/engine/src/cmd/snooze.rs crates/engine/src/cmd/tasks.rs crates/engine/src/cmd/view.rs crates/ui-egui/src/forms.rs
 msgid "Home"
 msgstr ""
 
@@ -6043,7 +6075,7 @@ msgid "Makes one test appointment a year from today in your account's calendar, 
 msgstr ""
 
 #. ribbon, ribbon location
-#: crates/engine/src/cmd/calendar.rs crates/engine/src/cmd/calendar_settings.rs crates/ui-egui/src/ribbon.rs
+#: crates/engine/src/cmd/calendar.rs crates/engine/src/cmd/calendar_feed.rs crates/engine/src/cmd/calendar_settings.rs crates/ui-egui/src/ribbon.rs
 msgid "Manage Calendars"
 msgstr ""
 
@@ -6570,7 +6602,7 @@ msgid "My organisation has to approve MailCraft first: what to do"
 msgstr ""
 
 #. interface, name
-#: crates/engine/src/session.rs crates/ui-egui/src/folder_properties.rs crates/ui-egui/src/forms.rs crates/ui-egui/src/meeting_dialogs/share.rs
+#: crates/engine/src/session.rs crates/ui-egui/src/dialogs.rs crates/ui-egui/src/folder_properties.rs crates/ui-egui/src/forms.rs crates/ui-egui/src/meeting_dialogs/share.rs
 msgid "Name"
 msgstr ""
 
@@ -8577,6 +8609,11 @@ msgstr ""
 msgid "Remove Everything"
 msgstr ""
 
+#. command label
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "Remove Internet Calendar"
+msgstr ""
+
 #. interface
 #: crates/ui-egui/src/dialogs.rs
 msgid "Remove Link"
@@ -9514,7 +9551,7 @@ msgid "Send & Receive"
 msgstr ""
 
 #. ribbon location
-#: crates/engine/src/cmd/account.rs crates/engine/src/cmd/auto_replies.rs crates/engine/src/cmd/calendar_settings.rs crates/engine/src/cmd/ews_mail.rs crates/engine/src/cmd/graph_mail.rs crates/engine/src/cmd/graph_send.rs crates/engine/src/cmd/jmap_mail.rs crates/engine/src/cmd/remote.rs crates/engine/src/cmd/rules_remote.rs crates/engine/src/cmd/send_receive.rs crates/engine/src/cmd/snooze.rs crates/engine/src/cmd/sync_progress.rs crates/engine/src/cmd/tasks_remote.rs crates/ui-egui/src/lib.rs
+#: crates/engine/src/cmd/account.rs crates/engine/src/cmd/auto_replies.rs crates/engine/src/cmd/calendar_feed.rs crates/engine/src/cmd/calendar_settings.rs crates/engine/src/cmd/ews_mail.rs crates/engine/src/cmd/graph_mail.rs crates/engine/src/cmd/graph_send.rs crates/engine/src/cmd/jmap_mail.rs crates/engine/src/cmd/remote.rs crates/engine/src/cmd/rules_remote.rs crates/engine/src/cmd/send_receive.rs crates/engine/src/cmd/snooze.rs crates/engine/src/cmd/sync_progress.rs crates/engine/src/cmd/tasks_remote.rs crates/ui-egui/src/lib.rs
 msgid "Send / Receive"
 msgstr ""
 
@@ -11117,6 +11154,11 @@ msgstr ""
 #. what a command says
 #: crates/engine/src/cmd/remote.rs
 msgid "The calendar \"{name}\" only shows when its owner is busy: this account can't change it."
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/dialogs.rs
+msgid "The calendar can only be read here: it is read again every three hours and with Send/Receive. An address with http:// is only for this computer and private networks; use https:// for the internet."
 msgstr ""
 
 #. interface
@@ -13201,6 +13243,11 @@ msgstr ""
 msgid "Upcoming"
 msgstr ""
 
+#. command label
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "Update Internet Calendars"
+msgstr ""
+
 #. what a command says
 #: crates/model/src/sync/progress.rs
 msgid "Updated {folder} on the server"
@@ -14130,7 +14177,7 @@ msgid "a Microsoft sign-in is only used with Microsoft's own mail servers: this 
 msgstr ""
 
 #. what a command says
-#: crates/engine/src/cmd/calendar.rs
+#: crates/engine/src/cmd/calendar.rs crates/engine/src/cmd/calendar_feed.rs
 msgid "a calendar named \"{name}\" already exists"
 msgstr ""
 
@@ -14349,6 +14396,21 @@ msgstr ""
 msgid "an event needs a title"
 msgstr ""
 
+#. what a command says
+#: crates/engine/src/cmd/calendar.rs
+msgid "an internet calendar can only be read: events can't go into it"
+msgstr ""
+
+#. what a command says
+#: crates/engine/src/cmd/calendar.rs
+msgid "an internet calendar can only be read: its events come from its address"
+msgstr ""
+
+#. what a command says
+#: crates/engine/src/cmd/calendar.rs
+msgid "an internet calendar can only be read: new events can't go into it"
+msgstr ""
+
 #. interface
 #: crates/ui-egui/src/forms.rs
 msgid "and"
@@ -14383,6 +14445,11 @@ msgstr ""
 #. what a command says, why a command can't run
 #: crates/engine/src/cmd/calendar.rs crates/engine/src/cmd/calendar/invitation.rs
 msgid "calendar"
+msgstr ""
+
+#. what a command says
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "calendar {id} isn't an internet calendar"
 msgstr ""
 
 #. why a command can't run
@@ -15164,6 +15231,11 @@ msgid "someone@example.org or @example.org"
 msgstr ""
 
 #. what a command says
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "that address is subscribed to already"
+msgstr ""
+
+#. what a command says
 #: crates/engine/src/cmd/calendar.rs
 msgid "that event doesn't repeat"
 msgstr ""
@@ -15299,7 +15371,7 @@ msgid "the browser can't read folders by path"
 msgstr ""
 
 #. what a command says
-#: crates/engine/src/cmd/calendar/meeting.rs
+#: crates/engine/src/cmd/calendar/meeting.rs crates/engine/src/cmd/calendar_feed.rs
 msgid "the calendar is gone"
 msgstr ""
 
@@ -15541,6 +15613,11 @@ msgstr ""
 #. what a command says
 #: crates/engine/src/cmd/calendar/meeting.rs
 msgid "the proposed end is not after the proposed start"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/feed_sync.rs
+msgid "the read stopped"
 msgstr ""
 
 #. what a command says
@@ -15889,7 +15966,7 @@ msgid "there are too many accounts"
 msgstr ""
 
 #. what a command says
-#: crates/engine/src/cmd/calendar.rs crates/engine/src/cmd/remote.rs
+#: crates/engine/src/cmd/calendar.rs crates/engine/src/cmd/calendar_feed.rs crates/engine/src/cmd/remote.rs
 msgid "there are too many calendars"
 msgstr ""
 

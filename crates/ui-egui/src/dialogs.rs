@@ -66,6 +66,13 @@ pub enum Dialog {
         /// The address that was asked for and is being read.
         reading: Option<String>,
     },
+    /// The address of an internet calendar (an `.ics` file) and the name it is to have
+    /// (`calendar.subscribe`, [`crate::feed_sync`]): the dialog only collects them.
+    SubscribeCalendar {
+        url: String,
+        name: String,
+        error: String,
+    },
     /// Where the selected text of the message being written leads (Ctrl+K).
     Link {
         url: String,
@@ -237,6 +244,7 @@ impl Dialog {
             Dialog::ReplyTo { .. } => "replyTo",
             Dialog::SharedMailbox { .. } => "sharedMailbox",
             Dialog::OpenCalendar { .. } => "openCalendar",
+            Dialog::SubscribeCalendar { .. } => "subscribeCalendar",
             Dialog::Link { .. } => "link",
             Dialog::DateTime { .. } => "dateTime",
             Dialog::WordCount { .. } => "wordCount",
@@ -328,6 +336,11 @@ impl Dialog {
                 let address = params.get("address").and_then(Value::as_str).unwrap_or_default().to_string();
                 Dialog::OpenCalendar { account, address, error: String::new(), reading: None }
             }
+            "subscribeCalendar" => Dialog::SubscribeCalendar {
+                url: params.get("url").and_then(Value::as_str).unwrap_or_default().to_string(),
+                name: params.get("name").and_then(Value::as_str).unwrap_or_default().to_string(),
+                error: String::new(),
+            },
             "link" => {
                 let c = app.session.compose.as_ref().filter(|c| c.format == mailcraft_engine::BodyFormat::Html)?;
                 let sel = c.body.selection();
@@ -1272,6 +1285,7 @@ pub fn input_dialog(id: &str, params: &Value) -> Option<&'static str> {
         "review.wordCount" => Some("wordCount"),
         "account.add" if !has("email") => Some("account"),
         "calendar.openShared" if !has("address") => Some("openCalendar"),
+        "calendar.subscribe" if !has("url") => Some("subscribeCalendar"),
         "rules.list" => Some("rules"),
         "junk.list" => Some("junkOptions"),
         "category.list" => Some("categories"),
@@ -1706,6 +1720,41 @@ pub fn show(app: &mut MailApp, ctx: &egui::Context) {
                 error.clear();
                 match app.begin_open_shared(*account, address.trim()) {
                     Ok(()) => *reading = app.open_shared.waiting.as_ref().map(|(_, wanted)| wanted.clone()),
+                    Err(e) => *error = e,
+                }
+            }
+        }
+        Dialog::SubscribeCalendar { url, name, error } => {
+            let ready = !url.trim().is_empty() && !name.trim().is_empty();
+            let mut submit = false;
+            let open = window(ctx, tl!("Add Calendar from Internet"), 460.0, |ui| {
+                ui.label(tl!("Address of the calendar (an .ics file)"));
+                let field = egui::TextEdit::singleline(url).hint_text("https://example.org/calendar.ics").desired_width(f32::INFINITY);
+                let resp = crate::text_menu::field(ui.add(field));
+                if error.is_empty() {
+                    crate::text_menu::hold(&resp);
+                }
+                ui.label(tl!("Name"));
+                let field = egui::TextEdit::singleline(name).hint_text(tl!("Holidays")).desired_width(f32::INFINITY);
+                crate::text_menu::field(ui.add(field));
+                ui.label(
+                    egui::RichText::new(tl!(
+                        "The calendar can only be read here: it is read again every three hours and with Send/Receive. An address with http:// is only for this computer and private networks; use https:// for the internet."
+                    ))
+                    .color(t.text_dim)
+                    .size(11.0),
+                );
+                if !error.is_empty() {
+                    ui.label(egui::RichText::new(error.as_str()).color(t.red));
+                }
+                let (ok, cancel) = buttons(ui, tl!("Add"), ready);
+                submit = (ok || enter) && ready;
+                close |= cancel;
+            });
+            close |= !open;
+            if submit && !close {
+                match app.execute("calendar.subscribe", json!({"url": url.trim(), "name": name.trim()})) {
+                    Ok(_) => close = true,
                     Err(e) => *error = e,
                 }
             }
