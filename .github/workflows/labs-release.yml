@@ -84,6 +84,17 @@ jobs:
         with:
           toolchain: 1.98.1
       - uses: Swatinem/rust-cache@v2
+      # A registration value with a byte-order mark or whitespace (as a PowerShell pipe adds) is
+      # compiled in but refused by the app at run time: fail here instead.
+      - name: Check the Google registration
+        shell: bash
+        run: |
+          for v in "$MAILCRAFT_GOOGLE_CLIENT_ID" "$MAILCRAFT_GOOGLE_CLIENT_SECRET"; do
+            if [ -n "$v" ] && ! printf '%s' "$v" | LC_ALL=C grep -qx '[A-Za-z0-9._-]*'; then
+              echo "::error::a Google registration secret has stray characters (byte-order mark or whitespace)"
+              exit 1
+            fi
+          done
       - name: Stamp the labs version
         shell: bash
         run: |
