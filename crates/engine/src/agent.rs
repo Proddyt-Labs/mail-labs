@@ -317,6 +317,7 @@ const SAFE: &[&str] = &[
     "calendar.applyFeed",
     // Proddyt Labs fork: the name and heading of a calendar kept here; nothing leaves the computer.
     "calendar.setGroup",
+    "calendar.showGroup",
     "calendar.rename",
     "calendar.showCalendar",
     "calendar.setCurrent",

@@ -158,7 +158,9 @@ pub fn calendar_groups(s: &Session) -> Vec<CalendarGroup> {
             names.push(name.to_string());
         }
     }
-    names.sort_by_key(|name| name.to_lowercase());
+    // By the parts of the name, so that a group comes right before the groups inside it
+    // ("Sports", "Sports/Brazil", "Sports/Italy", "Study").
+    names.sort_by_key(|name| name.split('/').map(|p| p.trim().to_lowercase()).collect::<Vec<_>>());
     for name in names {
         let calendars: Vec<Id> = here.iter().filter(|c| c.group.trim().eq_ignore_ascii_case(&name)).map(|c| c.id).collect();
         groups.push(CalendarGroup { title: name, account: 0, calendars });

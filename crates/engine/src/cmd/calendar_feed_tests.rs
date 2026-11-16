@@ -279,3 +279,31 @@ fn naming_and_grouping_a_calendar_kept_here_is_safe_for_an_agent() {
     assert_eq!(access("calendar.setGroup"), Some(Access::Safe));
     assert_eq!(access("calendar.rename"), Some(Access::Safe));
 }
+
+#[test]
+fn groups_inside_groups_are_listed_after_their_outer_one_and_shown_or_hidden_together() {
+    let mut s = session();
+    let mut add = |s: &mut Session, url: &str, name: &str, group: &str| -> Id {
+        s.run("calendar.subscribe", &json!({"url": url, "name": name, "group": group})).unwrap()["id"].as_u64().unwrap()
+    };
+    let br = add(&mut s, "https://example.org/br.ics", "Brasileirão", " Futebol / Brasil ");
+    let it = add(&mut s, "https://example.org/it.ics", "Serie A", "Futebol/Itália");
+    let vct = add(&mut s, "https://example.org/vct.ics", "VCT", "Esports");
+    let cl = add(&mut s, "https://example.org/cl.ics", "Champions", "futebol");
+    assert_eq!(s.mailbox.calendar(br).unwrap().group, "Futebol/Brasil");
+    let titles: Vec<String> = listed(&s).into_iter().map(|(t, _)| t).collect();
+    let at = |t: &str| titles.iter().position(|x| x == t).unwrap();
+    assert!(at("Esports") < at("futebol") && at("futebol") < at("Futebol/Brasil") && at("Futebol/Brasil") < at("Futebol/Itália"));
+    // Hiding "Futebol" hides the groups inside it, not the others.
+    let done = s.run("calendar.showGroup", &json!({"group": "FUTEBOL", "value": false})).unwrap();
+    assert_eq!(done["calendars"], 3);
+    let vis = |s: &Session, id: Id| s.mailbox.calendar(id).unwrap().visible;
+    assert!(!vis(&s, br) && !vis(&s, it) && !vis(&s, cl) && vis(&s, vct));
+    s.run("calendar.showGroup", &json!({"group": "Futebol/Itália", "value": true})).unwrap();
+    assert!(vis(&s, it) && !vis(&s, br));
+    assert!(s.run("calendar.showGroup", &json!({"group": "Basquete", "value": true})).is_err());
+    assert!(s.run("calendar.showGroup", &json!({"group": "Futebol"})).is_err());
+    // "Futebol/Bra" is not inside "Futebol/Brasil", nor the other way.
+    assert!(!super::calendar_feed::within("Futebol/Bra", "Futebol/Brasil") && !super::calendar_feed::within("Futebolx", "Futebol"));
+    assert_eq!(super::calendar_feed::clean_group(" a // b /c/d/e/f "), "a/b/c/d");
+}

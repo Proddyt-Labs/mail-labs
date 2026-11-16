@@ -1290,11 +1290,19 @@ struct CalendarRow {
 /// A heading of the list of calendars with the calendars under it.
 #[derive(Clone, Debug, PartialEq)]
 struct ListGroup {
-    /// What the heading says, which is also what its folding is remembered by.
+    /// What the heading says, which is also what its folding is remembered by. For a group inside
+    /// another (Proddyt Labs fork) it is the whole path: "Sports/Brazil".
     title: String,
     /// The calendars under it are folded away.
     folded: bool,
     rows: Vec<CalendarRow>,
+    /// How many groups it is inside of (0 at the top).
+    depth: usize,
+    /// Some(true) when every calendar of it and of the groups inside it is shown, Some(false)
+    /// when none is, None when only some are or it has none.
+    shown: Option<bool>,
+    /// An outer group is folded away, and this one with it.
+    hidden: bool,
 }
 
 /// What a group of calendars is remembered by when it is folded away: its heading, on one line.
@@ -1323,11 +1331,40 @@ fn calendar_groups(app: &MailApp) -> Vec<ListGroup> {
     };
     let folded = |title: &str| app.ui.collapsed_calendar_groups.iter().any(|key| *key == group_key(title));
     let groups = calendar_settings::calendar_groups(&app.session);
-    groups
-        .iter()
-        .take(100)
-        .map(|group| ListGroup { title: group.title.clone(), folded: folded(&group.title), rows: group.calendars.iter().filter_map(row).collect() })
-        .collect()
+    // Groups inside groups (Proddyt Labs fork): "Sports/Brazil" comes under a heading "Sports",
+    // made here when no calendar is in "Sports" itself.
+    let parts = |t: &str| t.split('/').map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect::<Vec<_>>();
+    let mut out: Vec<ListGroup> = Vec::new();
+    for group in groups.iter().take(100) {
+        let path = parts(&group.title);
+        let path = if path.is_empty() { vec![group.title.clone()] } else { path };
+        for depth in 0..path.len() {
+            let title = path[..=depth].join("/");
+            let last = depth + 1 == path.len();
+            match (out.iter().position(|g| g.title.eq_ignore_ascii_case(&title)), last) {
+                (Some(at), true) => out[at].rows.extend(group.calendars.iter().filter_map(row)),
+                (Some(_), false) => {}
+                (None, _) => {
+                    let rows = if last { group.calendars.iter().filter_map(row).collect() } else { Vec::new() };
+                    out.push(ListGroup { title: title.clone(), folded: folded(&title), rows, depth, shown: None, hidden: false });
+                }
+            }
+        }
+    }
+    // What each heading's box says, over the groups inside it too; and what an outer fold hides.
+    let within = mailcraft_engine::cmd::calendar_feed::within;
+    let titles: Vec<String> = out.iter().map(|g| g.title.clone()).collect();
+    let folds: Vec<bool> = out.iter().map(|g| g.folded).collect();
+    for n in 0..out.len() {
+        let inside: Vec<bool> = out.iter().filter(|g| within(&g.title, &titles[n])).flat_map(|g| g.rows.iter().map(|r| r.visible)).collect();
+        out[n].shown = if inside.is_empty() || (inside.iter().any(|v| *v) && !inside.iter().all(|v| *v)) {
+            None
+        } else {
+            Some(inside[0])
+        };
+        out[n].hidden = (0..titles.len()).any(|m| m != n && folds[m] && within(&titles[n], &titles[m]) && !titles[n].eq_ignore_ascii_case(&titles[m]));
+    }
+    out
 }
 
 /// The window command that is the list's own (`UI_COMMANDS` has it): fold the calendars of a
@@ -1361,6 +1398,9 @@ fn calendar_list(app: &mut MailApp, ui: &mut Ui, groups: Vec<ListGroup>) {
     let several = groups.iter().flat_map(|group| &group.rows).filter(|row| row.visible).count() > 1;
     let only_here = local_only(app);
     for (n, group) in groups.iter().enumerate() {
+        if group.hidden {
+            continue;
+        }
         group_heading(app, ui, &t, n, group);
         if !group.folded {
             for row in &group.rows {
@@ -1411,13 +1451,139 @@ fn group_heading(app: &mut MailApp, ui: &mut Ui, t: &Tokens, n: usize, group: &L
     if resp.hovered() {
         ui.painter().rect_filled(r.shrink2(vec2(4.0, 1.0)), 4.0, t.hover);
     }
+    let x = r.min.x + 16.0 * group.depth as f32;
     let icon = if group.folded { "collapsed" } else { "expanded" };
-    icons::paint(ui.painter(), Rect::from_center_size(pos2(r.min.x + 13.0, r.center().y), vec2(12.0, 12.0)), icon, t.icon, t.accent);
-    paint_clipped(ui.painter(), pos2(r.min.x + 24.0, r.center().y), r.width() - 30.0, group_title(&group.title), regular(14.667), t.text);
+    icons::paint(ui.painter(), Rect::from_center_size(pos2(x + 13.0, r.center().y), vec2(12.0, 12.0)), icon, t.icon, t.accent);
+    let mut text_x = x + 24.0;
+    // The group's box (Proddyt Labs fork): every calendar of it, and of the groups inside it,
+    // shown or hidden at once; a dash when only some are.
+    let boxed = Rect::from_center_size(pos2(text_x + 7.0, r.center().y), vec2(13.0, 13.0));
+    let hit = ui.interact(boxed.expand(3.0), ui.scope_id().with(("calendar_group_box", n)), Sense::click());
+    app.hit.add("calendarGroupBox", n as u64, boxed);
+    {
+        let p = ui.painter();
+        match group.shown {
+            Some(true) => {
+                p.rect_filled(boxed, 3.0, t.accent);
+                icons::paint(p, boxed.shrink(1.5), "tick", Color32::WHITE, Color32::WHITE);
+            }
+            Some(false) => {
+                p.rect_stroke(boxed, 3.0, Stroke::new(1.2, t.icon), StrokeKind::Inside);
+            }
+            None => {
+                p.rect_stroke(boxed, 3.0, Stroke::new(1.2, t.accent), StrokeKind::Inside);
+                p.rect_filled(Rect::from_center_size(boxed.center(), vec2(7.0, 2.0)), 1.0, t.accent);
+            }
+        }
+    }
+    let box_tip = if group.shown == Some(true) { tl!("Hide every calendar of this group") } else { tl!("Show every calendar of this group") };
+    if hit.on_hover_text(box_tip).clicked() {
+        let _ = app.run("calendar.showGroup", json!({"group": group.title, "value": group.shown != Some(true)}));
+    }
+    text_x += 20.0;
+    let label = group.title.rsplit('/').next().unwrap_or(&group.title).trim().to_string();
+    if paint_group_icon(ui.painter(), Rect::from_center_size(pos2(text_x + 8.0, r.center().y), vec2(16.0, 16.0)), &label, t.icon) {
+        text_x += 21.0;
+    }
+    paint_clipped(ui.painter(), pos2(text_x, r.center().y), r.max.x - text_x - 6.0, group_title(&label), regular(14.667), t.text);
     let tip = if group.folded { tl!("Show the calendars of this group") } else { tl!("Fold the calendars of this group away") };
     if resp.on_hover_text(tip).clicked() {
         let _ = app.run("ui.toggleCalendarGroup", json!({"group": group.title}));
     }
+}
+
+/// A picture for a group of calendars named after a sport, a country or a part of life
+/// (Proddyt Labs fork): a ball, a flag, a globe, a game pad, a chequered flag, a book, a house.
+/// `false` when the name says none of them.
+fn paint_group_icon(p: &Painter, r: Rect, label: &str, ink: Color32) -> bool {
+    let name: String = label.chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>().trim().to_lowercase();
+    let rgb = Color32::from_rgb;
+    let f = Rect::from_center_size(r.center(), vec2(16.0, 11.0));
+    let edge = Stroke::new(0.6, Color32::from_black_alpha(90));
+    // A flag of bands, across (true) or down, in the colours given.
+    let stripes = |across: bool, colors: &[Color32]| {
+        let n = colors.len() as f32;
+        for (i, c) in colors.iter().enumerate() {
+            let (a, b) = (i as f32 / n, (i as f32 + 1.0) / n);
+            let band = if across {
+                Rect::from_min_max(pos2(f.min.x, f.min.y + f.height() * a), pos2(f.max.x, f.min.y + f.height() * b))
+            } else {
+                Rect::from_min_max(pos2(f.min.x + f.width() * a, f.min.y), pos2(f.min.x + f.width() * b, f.max.y))
+            };
+            p.rect_filled(band, 0.0, *c);
+        }
+        p.rect_stroke(f, 1.0, edge, StrokeKind::Inside);
+    };
+    match name.as_str() {
+        "futebol" | "football" | "soccer" | "esportes" | "sports" => {
+            let c = r.center();
+            let dark = rgb(35, 35, 35);
+            p.circle_filled(c, 7.0, Color32::WHITE);
+            p.circle_stroke(c, 7.0, Stroke::new(1.1, dark));
+            let pent: Vec<egui::Pos2> = (0..5)
+                .map(|k| {
+                    let a = -std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::TAU / 5.0;
+                    pos2(c.x + 2.8 * a.cos(), c.y + 2.8 * a.sin())
+                })
+                .collect();
+            for q in &pent {
+                p.line_segment([*q, pos2(c.x + (q.x - c.x) * 2.4, c.y + (q.y - c.y) * 2.4)], Stroke::new(0.9, dark));
+            }
+            p.add(Shape::convex_polygon(pent, dark, Stroke::NONE));
+        }
+        "brasil" | "brazil" => {
+            p.rect_filled(f, 1.0, rgb(0, 151, 57));
+            let c = f.center();
+            let diamond = vec![pos2(c.x, f.min.y + 1.5), pos2(f.max.x - 1.5, c.y), pos2(c.x, f.max.y - 1.5), pos2(f.min.x + 1.5, c.y)];
+            p.add(Shape::convex_polygon(diamond, rgb(254, 221, 0), Stroke::NONE));
+            p.circle_filled(c, 2.6, rgb(0, 39, 118));
+        }
+        "inglaterra" | "england" => {
+            p.rect_filled(f, 1.0, Color32::WHITE);
+            p.rect_filled(Rect::from_center_size(f.center(), vec2(f.width(), 2.4)), 0.0, rgb(206, 17, 36));
+            p.rect_filled(Rect::from_center_size(f.center(), vec2(2.4, f.height())), 0.0, rgb(206, 17, 36));
+            p.rect_stroke(f, 1.0, edge, StrokeKind::Inside);
+        }
+        "itália" | "italia" | "italy" => stripes(false, &[rgb(0, 146, 70), Color32::WHITE, rgb(206, 43, 55)]),
+        "frança" | "franca" | "france" => stripes(false, &[rgb(0, 35, 149), Color32::WHITE, rgb(237, 41, 57)]),
+        "alemanha" | "germany" => stripes(true, &[rgb(0, 0, 0), rgb(221, 0, 0), rgb(255, 206, 0)]),
+        "espanha" | "spain" => stripes(true, &[rgb(170, 21, 27), rgb(241, 191, 0), rgb(241, 191, 0), rgb(170, 21, 27)]),
+        "portugal" => stripes(false, &[rgb(0, 102, 0), rgb(0, 102, 0), rgb(255, 0, 0), rgb(255, 0, 0), rgb(255, 0, 0)]),
+        "argentina" => stripes(true, &[rgb(116, 172, 223), Color32::WHITE, rgb(116, 172, 223)]),
+        "continentais" | "internacional" | "internacionais" | "mundo" | "world" | "europa" | "américa" | "america" => {
+            icons::paint(p, r, "globe", ink, ink)
+        }
+        "esports" | "games" | "jogos" | "e sports" => {
+            let body = Rect::from_center_size(r.center(), vec2(16.0, 10.0));
+            let hole = Color32::from_black_alpha(200);
+            p.rect_filled(body, 4.0, ink);
+            let d = pos2(body.min.x + 4.5, body.center().y);
+            p.rect_filled(Rect::from_center_size(d, vec2(5.0, 1.6)), 0.0, hole);
+            p.rect_filled(Rect::from_center_size(d, vec2(1.6, 5.0)), 0.0, hole);
+            p.circle_filled(pos2(body.max.x - 4.0, body.center().y - 1.3), 1.2, hole);
+            p.circle_filled(pos2(body.max.x - 5.8, body.center().y + 1.3), 1.2, hole);
+        }
+        "automobilismo" | "f1" | "fórmula 1" | "formula 1" | "corridas" | "motorsport" => {
+            let top = pos2(r.center().x - 8.0, r.center().y - 6.0);
+            for i in 0..4 {
+                for j in 0..3 {
+                    let c = if (i + j) % 2 == 0 { rgb(20, 20, 20) } else { Color32::WHITE };
+                    p.rect_filled(Rect::from_min_size(pos2(top.x + 4.0 * i as f32, top.y + 4.0 * j as f32), vec2(4.0, 4.0)), 0.0, c);
+                }
+            }
+            p.rect_stroke(Rect::from_min_size(top, vec2(16.0, 12.0)), 1.0, edge, StrokeKind::Inside);
+        }
+        "cti" | "escola" | "estudos" | "faculdade" | "school" | "study" => icons::paint(p, r, "journal", ink, ink),
+        "pessoal" | "casa" | "personal" | "home" => {
+            let c = r.center();
+            p.add(Shape::convex_polygon(vec![pos2(c.x, c.y - 7.0), pos2(c.x + 7.5, c.y - 0.5), pos2(c.x - 7.5, c.y - 0.5)], ink, Stroke::NONE));
+            p.rect_filled(Rect::from_min_max(pos2(c.x - 5.0, c.y - 1.0), pos2(c.x + 5.0, c.y + 6.5)), 1.0, ink);
+            p.rect_filled(Rect::from_min_max(pos2(c.x - 1.4, c.y + 2.0), pos2(c.x + 1.4, c.y + 6.5)), 0.0, Color32::from_black_alpha(160));
+        }
+        "trabalho" | "work" => icons::paint(p, r, "work", ink, ink),
+        _ => return false,
+    }
+    true
 }
 
 /// What the right button offers for a calendar of the list: to show it alone, to lay it over

@@ -30,6 +30,9 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("calendar.setGroup", "Move to Group", "Folder › Actions", set_group).params(
             r#"{"id": number, "group": string ("" for none)} — the heading a calendar kept on this computer (an internet calendar too) is listed under; a server's calendars keep their server's groups"#,
         ),
+        CommandSpec::new("calendar.showGroup", "Show Group", "Folder › Actions", show_group).params(
+            r#"{"group": string (a heading of the list; "Sports/Brazil" names a group inside "Sports"), "value": bool} — shows or hides every calendar of the group and of the groups inside it"#,
+        ),
         CommandSpec::new("calendar.rename", "Rename Calendar", "Folder › Actions", rename)
             .params(r#"{"id": number, "name": string} — a calendar kept on this computer (an internet calendar too); a server's calendars keep their server's names"#),
         CommandSpec::new("calendar.refreshSubscriptions", "Update Internet Calendars", "Send / Receive", refresh)
@@ -69,14 +72,17 @@ fn subscribe(s: &mut Session, v: &Value) -> CmdResult {
         Some(c) => mailcraft_model::Rgb::parse(c).ok_or_else(|| bad("`color` looks like #2E8B57"))?,
         None => super::calendar::next_color(&s.mailbox),
     };
-    let group = match p::str(v, "group") {
-        Some(g) => clean_name(g).unwrap_or_default(),
-        None => String::new(),
-    };
+    let group = p::str(v, "group").map(clean_group).unwrap_or_default();
     let id = s.mailbox.alloc_id();
     let subscription = Some(Subscription { url, stale: true, ..Default::default() });
     s.mailbox.calendars.push(Calendar { id, name, color, group, visible: true, rights: Rights::Read, subscription, ..Default::default() });
     Ok(json!({"id": id}))
+}
+
+/// A group as it is kept: its parts (split at "/", for a group inside another) cleaned like a
+/// name, the empty ones dropped, at most four deep.
+pub fn clean_group(text: &str) -> String {
+    text.split('/').filter_map(clean_name).take(4).collect::<Vec<_>>().join("/")
 }
 
 /// The calendar `id` when it is one this computer keeps (no server lists it): its name and group
@@ -92,7 +98,7 @@ fn kept_here(s: &mut Session, id: Id) -> Result<&mut Calendar, CmdError> {
 
 fn set_group(s: &mut Session, v: &Value) -> CmdResult {
     let id = p::req_id(v, "id")?;
-    let group = clean_name(p::req_str(v, "group")?).unwrap_or_default();
+    let group = clean_group(p::req_str(v, "group")?);
     // A handful of headings at most, as for a server's groups.
     let mailbox = &s.mailbox;
     let mut headings: HashSet<String> = mailbox.calendars.iter().filter(|c| c.id != id).map(|c| c.group.to_lowercase()).collect();
@@ -103,6 +109,31 @@ fn set_group(s: &mut Session, v: &Value) -> CmdResult {
     let calendar = kept_here(s, id)?;
     calendar.group = group.clone();
     Ok(json!({"id": id, "group": group}))
+}
+
+/// Whether the heading `title` is the group `path` or a group inside it ("Sports/Brazil" is inside
+/// "Sports"), whatever the letters' case and the spaces around the slashes.
+pub fn within(title: &str, path: &str) -> bool {
+    let parts = |t: &str| t.split('/').map(|p| p.trim().to_lowercase()).collect::<Vec<_>>();
+    let (t, p) = (parts(title), parts(path));
+    !p.is_empty() && t.len() >= p.len() && t[..p.len()] == p[..]
+}
+
+fn show_group(s: &mut Session, v: &Value) -> CmdResult {
+    let path = p::req_str(v, "group")?.trim().to_string();
+    let value = v.get("value").and_then(Value::as_bool).ok_or_else(|| bad("`value` is true or false"))?;
+    if path.is_empty() {
+        return Err(bad("`group` is empty"));
+    }
+    let ids: Vec<Id> =
+        super::calendar_settings::calendar_groups(s).into_iter().filter(|g| within(&g.title, &path)).flat_map(|g| g.calendars).collect();
+    if ids.is_empty() {
+        return Err(failed!("no group of calendars called \"{path}\"", path));
+    }
+    for c in s.mailbox.calendars.iter_mut().filter(|c| ids.contains(&c.id)) {
+        c.visible = value;
+    }
+    Ok(json!({"group": path, "visible": value, "calendars": ids.len()}))
 }
 
 fn rename(s: &mut Session, v: &Value) -> CmdResult {
