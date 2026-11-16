@@ -1,0 +1,110 @@
+{
+  "GET /users/@me/lists?maxResults=100": {
+    "kind": "tasks#taskLists",
+    "etag": "\"MTc2MzA0MDAwMA\"",
+    "items": [
+      {
+        "kind": "tasks#taskList",
+        "id": "MDAxTGlzdA",
+        "etag": "\"LTEyMzQ1Njc4OQ\"",
+        "title": "Minhas tarefas",
+        "updated": "2026-11-10T12:00:00.000Z",
+        "selfLink": "https://www.googleapis.com/tasks/v1/users/@me/lists/MDAxTGlzdA"
+      },
+      {
+        "kind": "tasks#taskList",
+        "id": "MDJTdHVkaW8",
+        "etag": "\"LTk4NzY1NDMyMQ\"",
+        "title": "Contratos",
+        "updated": "2026-11-11T08:00:00.000Z",
+        "selfLink": "https://www.googleapis.com/tasks/v1/users/@me/lists/MDJTdHVkaW8"
+      }
+    ]
+  },
+  "GET /lists/MDAxTGlzdA/tasks?maxResults=100&showCompleted=true&showHidden=true&showDeleted=false": {
+    "kind": "tasks#tasks",
+    "etag": "\"LTE1NjQ4MzkyMA\"",
+    "nextPageToken": "Q2lJS0dI",
+    "items": [
+      {
+        "kind": "tasks#task",
+        "id": "dDFHcmF2YXI",
+        "etag": "\"LTE3MDAwMDAwMDE\"",
+        "title": "[Studio] Gravar episódio",
+        "updated": "2026-11-12T10:00:00.000Z",
+        "selfLink": "https://www.googleapis.com/tasks/v1/lists/MDAxTGlzdA/tasks/dDFHcmF2YXI",
+        "position": "00000000000000000000",
+        "notes": "Roteiro pronto",
+        "status": "needsAction",
+        "due": "2026-11-20T00:00:00.000Z",
+        "links": [],
+        "webViewLink": "https://tasks.google.com/task/dDFHcmF2YXI"
+      },
+      {
+        "kind": "tasks#task",
+        "id": "dDJFZGl0YXI",
+        "etag": "\"LTE3MDAwMDAwMDI\"",
+        "title": "▶ [Studio] Editar vídeo",
+        "updated": "2026-11-12T11:00:00.000Z",
+        "selfLink": "https://www.googleapis.com/tasks/v1/lists/MDAxTGlzdA/tasks/dDJFZGl0YXI",
+        "position": "00000000000000000001",
+        "status": "needsAction",
+        "links": [],
+        "webViewLink": "https://tasks.google.com/task/dDJFZGl0YXI"
+      }
+    ]
+  },
+  "GET /lists/MDAxTGlzdA/tasks?maxResults=100&showCompleted=true&showHidden=true&showDeleted=false&pageToken=Q2lJS0dI": {
+    "kind": "tasks#tasks",
+    "etag": "\"LTE1NjQ4MzkyMQ\"",
+    "items": [
+      {
+        "kind": "tasks#task",
+        "id": "YzFNaWNybw",
+        "etag": "\"LTE3MDAwMDAwMDM\"",
+        "title": "Comprar microfone",
+        "updated": "2026-11-12T12:00:00.000Z",
+        "selfLink": "https://www.googleapis.com/tasks/v1/lists/MDAxTGlzdA/tasks/YzFNaWNybw",
+        "parent": "dDFHcmF2YXI",
+        "position": "00000000000000000000",
+        "status": "needsAction",
+        "links": [],
+        "webViewLink": "https://tasks.google.com/task/YzFNaWNybw"
+      },
+      {
+        "kind": "tasks#task",
+        "id": "dDRDYW5jZWw",
+        "etag": "\"LTE3MDAwMDAwMDQ\"",
+        "title": "✗ Reunião com a gráfica",
+        "updated": "2026-11-09T15:30:00.000Z",
+        "selfLink": "https://www.googleapis.com/tasks/v1/lists/MDAxTGlzdA/tasks/dDRDYW5jZWw",
+        "position": "00000000000000000002",
+        "status": "completed",
+        "completed": "2026-11-09T15:30:00.000Z",
+        "hidden": true,
+        "links": [],
+        "webViewLink": "https://tasks.google.com/task/dDRDYW5jZWw"
+      }
+    ]
+  },
+  "GET /lists/MDJTdHVkaW8/tasks?maxResults=100&showCompleted=true&showHidden=true&showDeleted=false": {
+    "kind": "tasks#tasks",
+    "etag": "\"LTE1NjQ4MzkyMg\"",
+    "items": [
+      {
+        "kind": "tasks#task",
+        "id": "dDVSZXZpc2Fy",
+        "etag": "\"LTE3MDAwMDAwMDU\"",
+        "title": "? Revisar contrato",
+        "updated": "2026-11-13T09:00:00.000Z",
+        "selfLink": "https://www.googleapis.com/tasks/v1/lists/MDJTdHVkaW8/tasks/dDVSZXZpc2Fy",
+        "position": "00000000000000000000",
+        "notes": "Linha 1\nLinha 2",
+        "status": "needsAction",
+        "due": "2026-12-01T00:00:00.000Z",
+        "links": [],
+        "webViewLink": "https://tasks.google.com/task/dDVSZXZpc2Fy"
+      }
+    ]
+  }
+}

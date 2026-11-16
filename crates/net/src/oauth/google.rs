@@ -3,6 +3,11 @@
 //! Google Desktop OAuth for Gmail IMAP/SMTP (issue #232).
 //! Reuses the parent's hardened PKCE, state, loopback listener and token parsing.
 //! No web Gmail API, calendar, contacts, or account persistence is introduced here.
+//!
+//! Proddyt Labs fork: the same registration also asks, by itself and never with a mail sign-in,
+//! for the owner's Google Tasks ([`sign_in_google_tasks_at`], [`refresh_google_tasks_at`]): a
+//! consent of its own for `https://www.googleapis.com/auth/tasks`, so that an account that signs
+//! in to Gmail with an app password can still have its to-dos kept in step.
 
 use super::*;
 
@@ -79,7 +84,8 @@ pub(super) fn sign_in_google_refused(
     let (id, secret) = registration(oauth, client_secret)?;
     Url::parse(&endpoints.authorize)?;
     let endpoint = Url::parse(&endpoints.token)?;
-    if !endpoints.scope.split_ascii_whitespace().any(|s| s == "https://mail.google.com/") {
+    let needed = needed_scope(endpoints);
+    if !endpoints.scope.split_ascii_whitespace().any(|s| s == needed) {
         return Err(NetError::Config("Google sign-in needs the Gmail IMAP/SMTP scope".into()).into());
     }
     if cancel.load(Ordering::Relaxed) {
@@ -101,7 +107,56 @@ pub(super) fn sign_in_google_refused(
         ("redirect_uri", redirect_uri.as_str()),
         ("code_verifier", verifier.as_str()),
     ];
-    exchange(&endpoint, &fields, "", &[code.as_str(), verifier.as_str(), secret], true)
+    exchange(&endpoint, &fields, "", &[code.as_str(), verifier.as_str(), secret], true, needed)
+}
+
+/// What a sign-in on `endpoints` must be granted to be of any use: Google Tasks' permission when
+/// that is what is asked for (Proddyt Labs fork), else Gmail's.
+fn needed_scope(endpoints: &Endpoints) -> &'static str {
+    if endpoints.scope.split_ascii_whitespace().any(|s| s == GOOGLE_TASKS) { GOOGLE_TASKS } else { GOOGLE_MAIL }
+}
+
+/// Proddyt Labs fork: Google's page for the owner's Google Tasks alone (reading and changing the
+/// lists and tasks, and who it is that signed in), at `endpoints` with their scope set to
+/// [`GOOGLE_TASKS_SCOPE`]. Nothing of mail is asked for or granted with it.
+pub fn sign_in_google_tasks_at(
+    endpoints: &Endpoints,
+    oauth: &OAuth,
+    client_secret: &str,
+    login_hint: &str,
+    open: &dyn Fn(&str),
+    cancel: &AtomicBool,
+) -> Result<Tokens, SignInEnd> {
+    let endpoints = Endpoints { scope: GOOGLE_TASKS_SCOPE.into(), ..endpoints.clone() };
+    sign_in_google_refused(&endpoints, oauth, client_secret, login_hint, open, cancel, SIGN_IN_TIMEOUT).map_err(SignInEnd::from)
+}
+
+/// Proddyt Labs fork: [`sign_in_google_tasks_at`] on Google's own page.
+pub fn sign_in_google_tasks(
+    oauth: &OAuth,
+    client_secret: &str,
+    login_hint: &str,
+    open: &dyn Fn(&str),
+    cancel: &AtomicBool,
+) -> Result<Tokens, SignInEnd> {
+    sign_in_google_tasks_at(&Endpoints::of(oauth), oauth, client_secret, login_hint, open, cancel)
+}
+
+/// Proddyt Labs fork: renew the access token for the owner's Google Tasks with the refresh token
+/// [`sign_in_google_tasks_at`] brought. A token without the Tasks permission is no success.
+pub fn refresh_google_tasks_at(endpoints: &Endpoints, oauth: &OAuth, client_secret: &str, refresh_token: &str) -> Result<Tokens, NetError> {
+    let (id, secret) = registration(oauth, client_secret)?;
+    let endpoint = Url::parse(&endpoints.token)?;
+    if refresh_token.is_empty() || !usable(refresh_token) {
+        return Err(NetError::Proto(ProtoError::Auth("there is no earlier sign-in to renew".into())));
+    }
+    let fields = [("grant_type", "refresh_token"), ("client_id", id), ("client_secret", secret), ("refresh_token", refresh_token)];
+    exchange(&endpoint, &fields, refresh_token, &[refresh_token, secret], false, GOOGLE_TASKS).map_err(|refused| refused.error)
+}
+
+/// Proddyt Labs fork: [`refresh_google_tasks_at`] at Google's own token endpoint.
+pub fn refresh_google_tasks(oauth: &OAuth, client_secret: &str, refresh_token: &str) -> Result<Tokens, NetError> {
+    refresh_google_tasks_at(&Endpoints::of(oauth), oauth, client_secret, refresh_token)
 }
 
 /// Renew a Google mail access token; the refresh grant stays scoped to the same account.
@@ -113,13 +168,13 @@ pub fn refresh_google_at(endpoints: &Endpoints, oauth: &OAuth, client_secret: &s
         return Err(NetError::Proto(ProtoError::Auth("there is no earlier sign-in to renew".into())));
     }
     let fields = [("grant_type", "refresh_token"), ("client_id", id), ("client_secret", secret), ("refresh_token", refresh_token)];
-    exchange(&endpoint, &fields, refresh_token, &[refresh_token, secret], false).map_err(|refused| refused.error)
+    exchange(&endpoint, &fields, refresh_token, &[refresh_token, secret], false, GOOGLE_MAIL).map_err(|refused| refused.error)
 }
 
 /// Token responses are hostile. An access token without the mail scope is useless, not success.
 /// On initial sign-in we require the identity token's email so that a browser choosing a
 /// different account cannot be silently treated as the requested one.
-fn exchange(endpoint: &Url, fields: &[(&str, &str)], previous: &str, secrets: &[&str], identify: bool) -> Result<Tokens, Refused> {
+fn exchange(endpoint: &Url, fields: &[(&str, &str)], previous: &str, secrets: &[&str], identify: bool, needed: &str) -> Result<Tokens, Refused> {
     let answer =
         http::post_form(endpoint, fields, TOKEN_TIMEOUT).map_err(|error| secrets.iter().fold(error, |error, secret| error.without(secret)))?;
     let parsed = serde_json::from_slice::<Value>(&answer.body).ok();
@@ -133,8 +188,9 @@ fn exchange(endpoint: &Url, fields: &[(&str, &str)], previous: &str, secrets: &[
     let scopes = parsed.as_ref().and_then(|data| data.get("scope")).and_then(Value::as_str);
     // OAuth 2.0 permits scope omission when the grant matches what was requested (RFC 6749
     // section 5.1). A returned narrower scope must explicitly include Gmail access.
-    if scopes.is_some_and(|scope| !scope.split_ascii_whitespace().any(|part| part == "https://mail.google.com/")) {
-        return Err(NetError::Proto(ProtoError::Auth("Google did not grant Gmail IMAP/SMTP access".into())).into());
+    if scopes.is_some_and(|scope| !scope.split_ascii_whitespace().any(|part| part == needed)) {
+        let said = if needed == GOOGLE_TASKS { "Google did not grant access to Google Tasks" } else { "Google did not grant Gmail IMAP/SMTP access" };
+        return Err(NetError::Proto(ProtoError::Auth(said.into())).into());
     }
     if identify && tokens.email.is_empty() {
         return Err(NetError::Proto(ProtoError::Auth("Google did not identify the signed-in email address".into())).into());

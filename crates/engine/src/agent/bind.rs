@@ -111,6 +111,8 @@ pub fn object(id: &str) -> Option<Object> {
         | "ui.allowSharedSend"
         | "ui.allowSharedCalendars"
         | "ui.allowTasks"
+        | "ui.connectGoogleTasks"
+        | "tasks.linkGoogle"
         | "ui.allowRules"
         | "ui.allowAutomaticReplies"
         | "ui.adminConsent"

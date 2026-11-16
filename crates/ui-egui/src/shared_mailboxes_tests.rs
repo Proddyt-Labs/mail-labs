@@ -567,6 +567,7 @@ fn add_shared_mailbox_waits_for_a_sign_in_being_renewed() {
         tasks: false,
         rules: false,
         replies: false,
+        google_tasks: false,
         browser: false,
         opening: app.session.openings(),
         rx,

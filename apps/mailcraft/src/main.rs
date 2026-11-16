@@ -727,6 +727,24 @@ fn sign_in_with(request: SignInRequest, open_page: &dyn Fn(&str) -> bool) -> Res
         let asked = mailcraft_net::oauth::sign_in_for_shared_send(&request.oauth, &request.email, &open, &request.cancel);
         return asked.map_err(|refusal| unopened(favorites_refusal(refusal)));
     }
+    // Proddyt Labs fork: the owner chose Connect Google Tasks: Google's page comes up for the
+    // Tasks permission alone, by itself, never with a mail sign-in.
+    if request.google_tasks {
+        let asked = mailcraft_net::oauth::sign_in_google_tasks(&request.oauth, &request.google_client_secret, &request.email, &open, &request.cancel);
+        return asked.map_err(|end| {
+            let said = match end {
+                _ if no_browser.load(Ordering::Relaxed) => NO_BROWSER.to_string(),
+                SignInEnd::Approval => GOOGLE_SIGN_IN_BLOCKED.to_string(),
+                SignInEnd::Declined => GOOGLE_SIGN_IN_DECLINED.to_string(),
+                SignInEnd::TimedOut => GOOGLE_SIGN_IN_TIMED_OUT.to_string(),
+                SignInEnd::Cancelled => mailcraft_net::NetError::SignInCancelled.to_string(),
+                // Never hand a potentially sensitive provider response to the window or log.
+                SignInEnd::Other(_) => "Google could not complete the sign-in for Google Tasks. Please retry.".to_string(),
+            };
+            log::info!("sign-in on Google's page for Google Tasks ended without tokens");
+            said
+        });
+    }
     // A tasks run found the sign-in doesn't cover the To Do lists (#248) and the owner said go
     // ahead: the page comes up for that permission alone, by itself.
     if request.graph && request.tasks {

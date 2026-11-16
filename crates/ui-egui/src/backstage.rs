@@ -261,15 +261,28 @@ fn info(app: &mut MailApp, ui: &mut Ui, t: &Tokens) {
             crate::ews_setup::info_rows(app, ui, t, a);
         }
         // Where keeping the tasks in step with Microsoft To Do stands, with a way to ask again (#248).
+        // (Proddyt Labs fork: or with Google Tasks, with a way to connect again or disconnect.)
+        let google = a.keeps_google_tasks();
         if let Some((line, again)) = app.tasks_line(a.id) {
             ui.horizontal(|ui| {
                 ui.add_space(36.0);
                 ui.label(egui::RichText::new(line).font(regular(11.5)).color(t.text_dim));
-                let tip = tl!(
-                    "Ask for permission to read and change your To Do lists and tasks: Microsoft's page opens in your browser. Without it, tasks stay on this computer."
-                );
-                if again && ui.link(tl!("Ask again")).on_hover_text(tip).clicked() {
-                    app.ask_tasks_again(a.id);
+                if google {
+                    let tip = tl!("Connect Google Tasks again: Google's page opens in your browser. Without it, tasks stay on this computer.");
+                    if again && ui.link(tl!("Connect again")).on_hover_text(tip).clicked() {
+                        app.ask_tasks_again(a.id);
+                    }
+                    let tip = tl!("Stop keeping this account's tasks in step with Google Tasks. They stay on this computer, and nothing is deleted at Google.");
+                    if ui.link(tl!("Disconnect")).on_hover_text(tip).clicked() {
+                        app.disconnect_google_tasks(a.id);
+                    }
+                } else {
+                    let tip = tl!(
+                        "Ask for permission to read and change your To Do lists and tasks: Microsoft's page opens in your browser. Without it, tasks stay on this computer."
+                    );
+                    if again && ui.link(tl!("Ask again")).on_hover_text(tip).clicked() {
+                        app.ask_tasks_again(a.id);
+                    }
                 }
             });
             if let Some((line, _)) = app.local_tasks_line().filter(|_| app.tasks_working_first() == Some(a.id)) {
@@ -283,6 +296,20 @@ fn info(app: &mut MailApp, ui: &mut Ui, t: &Tokens) {
                     }
                 });
             }
+            ui.add_space(4.0);
+        }
+        // Proddyt Labs fork: an account at Google whose tasks no server keeps can connect Google Tasks.
+        if let Some((line, can)) = app.google_tasks_offer(a.id) {
+            ui.horizontal(|ui| {
+                ui.add_space(36.0);
+                ui.label(egui::RichText::new(line).font(regular(11.5)).color(t.text_dim));
+                let tip = tl!(
+                    "Keep this account's tasks in step with Google Tasks, both ways: Google's page opens in your browser to ask for your permission. Nothing is sent before you allow it."
+                );
+                if can && ui.link(tl!("Connect Google Tasks")).on_hover_text(tip).clicked() {
+                    app.ask_google_tasks(a.id);
+                }
+            });
             ui.add_space(4.0);
         }
         // Where keeping rules on the server stands, with a way to ask again (#566).

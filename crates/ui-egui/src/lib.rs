@@ -222,6 +222,9 @@ mod sync_panel;
 pub mod task_sync;
 #[cfg(test)]
 mod task_sync_tests;
+// Proddyt Labs fork: Google Tasks in the window.
+#[cfg(test)]
+mod google_tasks_sync_tests;
 pub mod tasks_view;
 mod text_menu;
 #[cfg(test)]
@@ -757,6 +760,11 @@ pub struct SignInRequest {
     /// its automatic replies, by itself, never with a sign-in of any other kind: a change found
     /// the sign-in doesn't cover it, and the owner said go ahead.
     pub replies: bool,
+    /// Proddyt Labs fork: ask Google's page for the owner's Google Tasks alone
+    /// (`https://www.googleapis.com/auth/tasks`), by itself, never with a mail sign-in: the owner
+    /// chose Connect Google Tasks. The refresh token that comes back is for the tasks and nothing
+    /// else, and is kept apart from mail's.
+    pub google_tasks: bool,
 }
 
 pub use mailcraft_host::calendar::{CalendarCheckRequest, CalendarCheckResult, CalendarCheckStep};
@@ -787,6 +795,8 @@ struct SigningIn {
     rules: bool,
     /// And for changing the automatic replies.
     replies: bool,
+    /// Proddyt Labs fork: for the owner's Google Tasks alone.
+    google_tasks: bool,
     /// The owner signs in on a page in the browser (no kept token to renew it with).
     browser: bool,
     /// The mailbox opening it was started under ([`Session::openings`]): an answer that comes
@@ -1115,6 +1125,12 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Allow Keeping Tasks in Step with Microsoft To Do",
         "File › Info",
         r#"{"account": number (a Microsoft account), "confirmed": true} — asks the owner, on Microsoft's page in the browser, to let MailCraft read and change the To Do lists and tasks (Tasks.ReadWrite), by itself: an account that signed in before this was asked is not asked with a sign-in. The window asks first, when a tasks run finds the sign-in doesn't cover it, and File › Info has "Ask again". Allowed, the tasks are kept in step at the next look; refused, or when an administrator has to approve first, the window says what to do next. Answers {"pending": "signIn", "account": number}"#,
+    ),
+    (
+        "ui.connectGoogleTasks",
+        "Connect Google Tasks",
+        "File › Info",
+        r#"{"account": number (an account whose to-dos Microsoft doesn't keep, such as a Gmail account with an app password), "confirmed": true} — Proddyt Labs fork: asks the owner, on Google's page in the browser, to let MailCraft read and change his Google Tasks lists and tasks (https://www.googleapis.com/auth/tasks), by itself and never with a mail sign-in; the Google account chosen there must be the account's own address. Allowed, the account is linked (tasks.linkGoogle) and its tasks are kept in step both ways at the next look; its refresh token is kept in the system's credential store, never in the mailbox. A build without a Google registration (MAILCRAFT_GOOGLE_CLIENT_ID and MAILCRAFT_GOOGLE_CLIENT_SECRET when it was built) can't, and says so. Answers {"pending": "signIn", "account": number}"#,
     ),
     (
         "ui.allowRules",
@@ -1544,6 +1560,12 @@ pub struct MailApp {
     /// without it, for reading the calendars opened by address (#70).
     shared_calendars_next: bool,
     tasks_next: bool,
+    /// Proddyt Labs fork: the next sign-in is Google's page for the owner's Google Tasks
+    /// ([`task_sync`]).
+    google_tasks_next: bool,
+    /// Proddyt Labs fork: the refresh tokens for Google Tasks, by account, for the session (the
+    /// system's credential store keeps them when the owner lets it). Never mail's.
+    pub(crate) google_tasks_refresh: std::collections::HashMap<Id, String>,
     /// The next sign-in asks for changing the automatic replies ([`auto_replies`]).
     replies_next: bool,
     pub(crate) tasks: task_sync::TaskSync,
@@ -1850,6 +1872,8 @@ impl MailApp {
             shared_send_next: false,
             shared_calendars_next: false,
             tasks_next: false,
+            google_tasks_next: false,
+            google_tasks_refresh: Default::default(),
             rules_next: false,
             replies_next: false,
             tasks: Default::default(),
@@ -2671,6 +2695,13 @@ impl MailApp {
                 let Some(account) = p.get("account").and_then(Value::as_u64) else { return Some(Err(tl!("`account` is required").to_string())) };
                 self.begin_tasks_sign_in(account)
             }
+            "ui.connectGoogleTasks" => {
+                if p.get("confirmed").and_then(Value::as_bool) != Some(true) {
+                    return Some(Err(tl!("Say that this is meant with \"confirmed\": true.").to_string()));
+                }
+                let Some(account) = p.get("account").and_then(Value::as_u64) else { return Some(Err(tl!("`account` is required").to_string())) };
+                self.begin_google_tasks_sign_in(account)
+            }
             "ui.allowRules" => {
                 if p.get("confirmed").and_then(Value::as_bool) != Some(true) {
                     return Some(Err(tl!("Say that this is meant with \"confirmed\": true.").to_string()));
@@ -2894,7 +2925,7 @@ impl MailApp {
     /// account `account` of this mailbox, with the servers it has now: that account's own, never
     /// one found by its address (another may have it too, with other servers, AU3-03).
     fn remembered(&self, kind: &str, account: Id) -> Option<String> {
-        if !matches!(kind, "password" | "refresh") || !self.ui.remember_sign_in || self.unconfirmed {
+        if !matches!(kind, "password" | "refresh" | task_sync::GOOGLE_TASKS_SECRET) || !self.ui.remember_sign_in || self.unconfirmed {
             return None;
         }
         let a = self.session.mailbox.account(account)?;
@@ -2906,7 +2937,12 @@ impl MailApp {
     /// Have the operating system remember a secret for the account `account`, when the owner
     /// wants that: under that account's own name.
     fn remember(&mut self, kind: &str, account: Id, secret: &str) {
-        if !matches!(kind, "password" | "refresh") || !self.ui.remember_sign_in || secret.is_empty() || self.data_removed || self.unconfirmed {
+        if !matches!(kind, "password" | "refresh" | task_sync::GOOGLE_TASKS_SECRET)
+            || !self.ui.remember_sign_in
+            || secret.is_empty()
+            || self.data_removed
+            || self.unconfirmed
+        {
             return;
         }
         let Some(account) = self.session.mailbox.account(account) else { return };
@@ -2983,7 +3019,7 @@ impl MailApp {
     pub(crate) fn forget_account_secrets(&mut self, a: &mailcraft_model::Account) {
         let Some(store) = &self.services.secrets else { return };
         let mut gone = Vec::new();
-        for kind in ["password", "refresh"] {
+        for kind in ["password", "refresh", task_sync::GOOGLE_TASKS_SECRET] {
             for key in Self::secret_keys_of(kind, a) {
                 store.delete(&key);
                 if store.get(&key).is_none() {
@@ -3003,7 +3039,12 @@ impl MailApp {
 
     /// Forget only this account's rejected refresh grant, including the in-memory cache.
     fn forget_account_refresh(&mut self, account: &mailcraft_model::Account) {
-        let keys = Self::secret_keys_of("refresh", account);
+        self.forget_account_secret("refresh", account);
+    }
+
+    /// Forget only this account's secret of this kind, including the in-memory cache.
+    fn forget_account_secret(&mut self, kind: &str, account: &mailcraft_model::Account) {
+        let keys = Self::secret_keys_of(kind, account);
         for key in &keys {
             self.secret_cache.remove(key);
         }
@@ -3082,6 +3123,7 @@ impl MailApp {
         let tasks = std::mem::take(&mut self.tasks_next) && graph && shared.is_none();
         let rules = std::mem::take(&mut self.rules_next) && graph && shared.is_none() && !tasks;
         let replies = std::mem::take(&mut self.replies_next) && graph && shared.is_none() && !tasks && !rules;
+        let google_tasks = std::mem::take(&mut self.google_tasks_next) && !graph && oauth.provider == mailcraft_model::OAuthProvider::Google;
         if self.signing_in.is_some() || self.approving() {
             return Err(tl!("Finish signing in first (your browser is waiting)").to_string());
         }
@@ -3116,6 +3158,7 @@ impl MailApp {
             tasks,
             rules,
             replies,
+            google_tasks,
         };
         let snapshot = self.session.mailbox.account(account).cloned();
         let rx = sign_in(request);
@@ -3132,6 +3175,7 @@ impl MailApp {
             tasks,
             rules,
             replies,
+            google_tasks,
             browser,
             opening,
             rx,
@@ -4017,6 +4061,7 @@ impl MailApp {
         let for_tasks = waiting.tasks;
         let for_rules = waiting.rules;
         let for_replies = waiting.replies;
+        let for_google_tasks = waiting.google_tasks;
         let started_under = waiting.opening;
         let on_the_page = waiting.browser;
         self.signing_in = None;
@@ -4064,6 +4109,11 @@ impl MailApp {
                 return self.shared_send_signed_in(shared, account, answer);
             }
             return self.shared_signed_in(shared, account, answer);
+        }
+        // Proddyt Labs fork: for keeping the tasks in step with Google Tasks: they are, now, or why
+        // not is said.
+        if for_google_tasks {
+            return self.google_tasks_signed_in(account, answer);
         }
         // For keeping the tasks in step with Microsoft To Do (#248): they are, now, or why not is said.
         if for_tasks {

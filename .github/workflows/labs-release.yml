@@ -73,6 +73,11 @@ jobs:
           - { os: windows-latest, plat: windows }
           - { os: ubuntu-22.04, plat: linux }
     runs-on: ${{ matrix.os }}
+    # Google registration for Google Tasks (and Gmail sign-in): compiled in when the repository
+    # secrets are set; without them the build simply can't connect Google Tasks.
+    env:
+      MAILCRAFT_GOOGLE_CLIENT_ID: ${{ secrets.MAILCRAFT_GOOGLE_CLIENT_ID }}
+      MAILCRAFT_GOOGLE_CLIENT_SECRET: ${{ secrets.MAILCRAFT_GOOGLE_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master

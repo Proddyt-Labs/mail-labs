@@ -43,6 +43,8 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("tasks.sendLocal", "Send Local Tasks to To Do", "File › Info", send_local_command)
             .params(r#"{"account": number | null} — the owner's answer to "Send your local tasks to <account>'s To Do?": a Microsoft account sends the to-dos that exist only on this computer now to its default list at the next Send/Receive of tasks; null ("Not now") keeps them here. Until it is answered nothing local is sent, and a to-do the owner chose to keep here is never part of it. Answers {"sent": number (how many are to go), "keptHere": number}"#),
+        CommandSpec::new("tasks.linkGoogle", "Link Google Tasks", "File › Info", link_google_command)
+            .params(r#"{"account": number, "linked": bool} — Proddyt Labs fork: whether that account's to-dos are kept in step with Google Tasks. The window links an account once Google's page said yes to `ui.connectGoogleTasks` (whose refresh token is kept in the system's credential store, never here); linking alone sends nothing until there is such a sign-in. An account whose to-dos Microsoft keeps, or a shared mailbox, is refused. Unlinking keeps the to-dos on this computer and tells Google nothing. Answers {"account", "linked"}"#),
         CommandSpec::new("sync.taskChanges", "To-do Changes to Send", "Send / Receive", task_changes_command)
             .pure()
             .params(r#"{"account": number} — what that Microsoft account's server (Microsoft To Do) is to be told of to-dos made, changed or deleted here: {"account", "email", "ops": [{"kind": "create"|"update"|"delete", "task": number, "id"?: string, "list"?: string, "patch": {title?, notes?, start?, due?, completed?, importance?, categories?, reminder?}}]}"#),
@@ -59,6 +61,33 @@ pub fn specs() -> Vec<CommandSpec> {
 /// a shared mailbox.
 pub fn keeps_tasks(mailbox: &Mailbox, account: Id) -> bool {
     mailbox.account(account).is_some_and(|a| a.keeps_tasks())
+}
+
+/// Proddyt Labs fork: whether the account's to-dos are kept in step with Google Tasks rather than
+/// Microsoft To Do ([`mailcraft_model::Account::keeps_google_tasks`]).
+pub fn keeps_google_tasks(mailbox: &Mailbox, account: Id) -> bool {
+    mailbox.account(account).is_some_and(|a| a.keeps_google_tasks())
+}
+
+/// Proddyt Labs fork: whether a to-do made here may be sent to `account`'s Google Tasks. Google
+/// Tasks is the owner's personal account and is bound to that one account: only to-dos that are
+/// its own (put in it) or the owner's local ones go there. Nothing of another account crosses
+/// over: a to-do made from a message of another account (a work mailbox's) stays where it is,
+/// and to-dos another account's server keeps (Microsoft To Do) are never in its upload at all,
+/// since an upload only ever holds the to-dos whose origin is the account itself.
+pub fn google_may_take(mailbox: &Mailbox, task: &Task, account: Id) -> bool {
+    if task.origin.account != account {
+        return false;
+    }
+    match task.message.and_then(|m| mailbox.message(m)) {
+        Some(message) => message.account == account,
+        None => true,
+    }
+}
+
+/// What the place that keeps the account's to-dos is called, for what the owner is told.
+fn service_of(mailbox: &Mailbox, account: Id) -> &'static str {
+    if keeps_google_tasks(mailbox, account) { "Google Tasks" } else { "Microsoft To Do" }
 }
 
 /// The account the owner sent their local to-dos to ([`LocalTasks::SendTo`]), if any: where they
@@ -95,18 +124,26 @@ fn task_upload_of(mailbox: &Mailbox, account: Id) -> Result<Vec<TaskOp>, CmdErro
     if !keeps_tasks(mailbox, account) {
         return Err(bad("that account doesn't keep its to-dos with Microsoft"));
     }
+    let google = keeps_google_tasks(mailbox, account);
     let mut ops: Vec<TaskOp> = Vec::new();
     for gone in mailbox.task_gone.iter().filter(|gone| gone.account == account) {
-        ops.push(TaskOp { kind: TaskOpKind::Delete, task: 0, id: gone.id.clone(), list: gone.list.clone(), patch: Default::default() });
+        ops.push(TaskOp { kind: TaskOpKind::Delete, task: 0, id: gone.id.clone(), list: gone.list.clone(), ..Default::default() });
     }
     for task in mailbox.tasks.values().filter(|t| t.origin.account == account && !t.origin.id.is_empty() && !t.local_only) {
         if let Some(patch) = task.patch() {
-            ops.push(TaskOp { kind: TaskOpKind::Update, task: task.id, id: task.origin.id.clone(), list: task.list.clone(), patch });
+            // (Google Tasks writes the categories into the title: it is told the whole to-do too.)
+            let whole = google.then(|| task.fields());
+            ops.push(TaskOp { kind: TaskOpKind::Update, task: task.id, id: task.origin.id.clone(), list: task.list.clone(), patch, whole });
         }
     }
-    let waiting = |t: &&std::sync::Arc<Task>| !t.local_only && t.origin.id.is_empty() && t.origin.account == account;
+    // (Google Tasks, the owner's personal account: only what is its own or the owner's local
+    // to-dos goes there, never what came from another account; `google_may_take`.)
+    let waiting = |t: &&std::sync::Arc<Task>| {
+        !t.local_only && t.origin.id.is_empty() && t.origin.account == account && (!google || google_may_take(mailbox, t, account))
+    };
     for task in mailbox.tasks.values().filter(waiting).take(MAX_TASK_CREATES) {
-        ops.push(TaskOp { kind: TaskOpKind::Create, task: task.id, id: String::new(), list: String::new(), patch: task.fields().whole() });
+        let whole = google.then(|| task.fields());
+        ops.push(TaskOp { kind: TaskOpKind::Create, task: task.id, id: String::new(), list: String::new(), patch: task.fields().whole(), whole });
     }
     ops.truncate(MAX_TASK_OPS);
     Ok(ops)
@@ -272,6 +309,7 @@ pub fn apply_task_outcomes(mailbox: &mut Mailbox, uploaded: &TasksUploaded) -> R
     }
     let mut merged = Merged::default();
     let mut failed = 0usize;
+    let service = service_of(mailbox, account);
     for outcome in uploaded.outcomes.iter().take(MAX_OUTCOMES) {
         let mut outcome = outcome.clone();
         outcome.tidy();
@@ -280,7 +318,7 @@ pub fn apply_task_outcomes(mailbox: &mut Mailbox, uploaded: &TasksUploaded) -> R
             (TaskOpKind::Delete, TaskResult::Done | TaskResult::Gone | TaskResult::Refused) => {
                 mailbox.task_gone.retain(|g| !(g.account == account && g.id == outcome.id));
                 if outcome.result == TaskResult::Refused {
-                    merged.say(format!("A deleted to-do couldn't be deleted from Microsoft To Do{}", why()));
+                    merged.say(format!("A deleted to-do couldn't be deleted from {service}{}", why()));
                 }
                 merged.removed += 1;
             }
@@ -325,19 +363,18 @@ pub fn apply_task_outcomes(mailbox: &mut Mailbox, uploaded: &TasksUploaded) -> R
                 if let Ok(task) = mailbox.task_mut(outcome.task) {
                     task.local_only = true;
                 }
-                merged
-                    .say(format!("Microsoft To Do didn't take a change to a to-do; it is kept on this computer until you change it again{}", why()));
+                merged.say(format!("{service} didn't take a change to a to-do; it is kept on this computer until you change it again{}", why()));
                 failed += 1;
             }
             (TaskOpKind::Create, TaskResult::Refused) => {
                 if let Ok(task) = mailbox.task_mut(outcome.task) {
                     task.local_only = true;
                 }
-                merged.say(format!("Microsoft To Do didn't take a new to-do; it stays on this computer until you change it{}", why()));
+                merged.say(format!("{service} didn't take a new to-do; it stays on this computer until you change it{}", why()));
                 failed += 1;
             }
             (_, TaskResult::Denied) => {
-                merged.say(format!("This account may not change its to-dos in Microsoft To Do{}", why()));
+                merged.say(format!("This account may not change its to-dos in {service}{}", why()));
                 failed += 1;
             }
             _ => failed += 1,
@@ -432,6 +469,21 @@ fn send_local_command(s: &mut Session, v: &Value) -> CmdResult {
         LocalTasks::SendTo(_) => json!({"sent": waiting, "keptHere": 0}),
         _ => json!({"sent": 0, "keptHere": waiting}),
     })
+}
+
+/// Proddyt Labs fork: link or unlink an account's to-dos to Google Tasks (`tasks.linkGoogle`).
+fn link_google_command(s: &mut Session, v: &Value) -> CmdResult {
+    let account = crate::p::req_id(v, "account")?;
+    let linked = v.get("linked").and_then(Value::as_bool).ok_or_else(|| bad("`linked` is required (true or false)"))?;
+    let a = s.mailbox.account(account).ok_or_else(|| bad("no such account"))?;
+    if linked && (a.is_shared() || a.keeps_microsoft_tasks()) {
+        return Err(bad("that account's to-dos can't go to Google Tasks: Microsoft keeps them, or it is a shared mailbox"));
+    }
+    if a.google_tasks != linked {
+        s.mailbox.account_mut(account).map_err(|e| fail(e.to_string()))?.google_tasks = linked;
+        s.mailbox_changed();
+    }
+    Ok(json!({"account": account, "linked": linked}))
 }
 
 fn task_changes_command(s: &mut Session, v: &Value) -> CmdResult {

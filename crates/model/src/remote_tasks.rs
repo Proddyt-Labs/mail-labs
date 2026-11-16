@@ -12,7 +12,7 @@ use mailcraft_time::{Date, Timestamp};
 use serde::{Deserialize, Serialize};
 
 use crate::remote::{key, line, text};
-use crate::{Account, Id, Importance, MAX_NAME, TaskPatch};
+use crate::{Account, Id, Importance, MAX_NAME, TaskFields, TaskPatch};
 
 /// Most lists, most to-dos in one list and most to-dos in all of an account's lists that one
 /// download is taken to hold; what is beyond is left out and the download is not complete.
@@ -135,6 +135,11 @@ pub struct TaskOp {
     pub id: String,
     pub list: String,
     pub patch: TaskPatch,
+    /// Proddyt Labs fork: for an account whose to-dos Google Tasks keeps, every field of the
+    /// to-do as it is here after the change. Google writes the categories into the title, so a
+    /// change of either needs the other to be sent whole. `None` for Microsoft To Do.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub whole: Option<TaskFields>,
 }
 
 /// What a host is to tell an account's server.

@@ -160,6 +160,9 @@ const ROWS: &[(&str, &str, Setup)] = &[
     ("ui.allowSharedSend", r#"{"account": $account}"#, Setup::None),
     ("ui.allowSharedCalendars", r#"{"account": $account, "confirmed": true}"#, Setup::None),
     ("ui.allowTasks", r#"{"account": $account, "confirmed": true}"#, Setup::None),
+    // Proddyt Labs fork: Google Tasks.
+    ("ui.connectGoogleTasks", r#"{"account": $account, "confirmed": true}"#, Setup::None),
+    ("tasks.linkGoogle", r#"{"account": $account, "linked": false}"#, Setup::None),
     ("ui.allowRules", r#"{"account": $account, "confirmed": true}"#, Setup::None),
     ("ui.allowAutomaticReplies", r#"{"account": $account, "confirmed": true}"#, Setup::None),
     ("ui.adminConsent", "{}", Setup::None),

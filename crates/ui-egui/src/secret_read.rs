@@ -93,6 +93,15 @@ impl MailApp {
                         .then(|| Self::legacy_secret_key(kind, &a.email)),
                 })
             })
+            // Proddyt Labs fork: the Google Tasks sign-in of an account linked to it (no older name).
+            .chain(
+                self.session
+                    .mailbox
+                    .accounts
+                    .iter()
+                    .filter(|a| a.keeps_google_tasks())
+                    .map(|a| Ask { key: Self::secret_key(crate::task_sync::GOOGLE_TASKS_SECRET, a), old: None }),
+            )
             .collect();
         let (send, receive) = mpsc::channel();
         let job = std::thread::Builder::new().name("secret-read".into()).spawn(move || {

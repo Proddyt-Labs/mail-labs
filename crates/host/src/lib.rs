@@ -18,6 +18,10 @@ pub mod secrets;
 #[cfg(test)]
 mod secrets_tests;
 pub mod tasks;
+// Proddyt Labs fork: the Google Tasks job, against recorded answers.
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+mod google_tasks_tests;
 #[cfg(test)]
 mod tasks_tests;
 

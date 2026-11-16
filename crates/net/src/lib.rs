@@ -43,6 +43,8 @@ mod favorite_paths;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod gmail;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod google_tasks;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod graph;
 #[cfg(not(target_arch = "wasm32"))]
 mod http;
@@ -82,6 +84,10 @@ mod fake;
 #[cfg(test)]
 #[cfg(not(target_arch = "wasm32"))]
 mod tests;
+// Proddyt Labs fork: Google Tasks.
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+mod google_tasks_tests;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use native::*;

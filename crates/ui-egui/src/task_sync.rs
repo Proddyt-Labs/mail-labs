@@ -20,6 +20,15 @@
 //! itself, with a question first and then Microsoft's page ([`MailApp::ask_tasks`]). File › Info
 //! says where it stands, with a way to ask again. A no that is not the owner's to change is said
 //! as for the Favorites ([`crate::favorites_sync::NEEDS_APPROVAL`]…).
+//!
+//! **Google Tasks** (Proddyt Labs fork). An account whose to-dos Microsoft doesn't keep (a Gmail
+//! account with an app password, say) can have them kept in step with Google Tasks instead: the
+//! owner chooses Connect Google Tasks in File › Info ([`MailApp::ask_google_tasks`]), Google's page
+//! asks for the Tasks permission alone (`ui.connectGoogleTasks`), and with a yes the account is
+//! linked (`tasks.linkGoogle`) and its refresh token for the tasks kept apart from any mail
+//! sign-in ([`GOOGLE_TASKS_SECRET`]). The same job then runs against Google (`TasksJob::oauth`
+//! names Google), and the same merge takes in what it brings. A build without a Google
+//! registration can't connect, and File › Info says so.
 
 use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
@@ -34,6 +43,10 @@ use crate::{MailApp, Tokens, now_ms};
 
 pub(crate) use mailcraft_engine::sync_driver::{Permission, fingerprint};
 pub use mailcraft_host::tasks::{TasksJob, TasksResult};
+
+/// Proddyt Labs fork: what a Google Tasks refresh token is kept as in the system's credential
+/// store (with the account's own name, [`MailApp::secret_key`]): never the mail sign-in's.
+pub(crate) const GOOGLE_TASKS_SECRET: &str = "googleTasks";
 
 /// What a to-do job was started for: the mailbox opening ([`mailcraft_engine::Session::openings`])
 /// and the account as it was, whose address the answer is taken in for (AU3-08).
@@ -72,8 +85,23 @@ impl TaskSync {
 impl MailApp {
     /// Whether the to-dos of `account` wait for the owner's permission, or for a new sign-in.
     fn tasks_blocked(&self, account: Id) -> bool {
-        let refresh = self.tokens.get(&account).map(|t| t.refresh.as_str());
+        let refresh = if tasks_remote::keeps_google_tasks(&self.session.mailbox, account) {
+            self.google_tasks_refresh.get(&account).map(String::as_str)
+        } else {
+            self.tokens.get(&account).map(|t| t.refresh.as_str())
+        };
         Permission::blocks(self.tasks.perm.get(&account), refresh)
+    }
+
+    /// The refresh token a to-do job of `account` renews its token with: for Google Tasks its own
+    /// (Proddyt Labs fork), else the account's sign-in.
+    fn tasks_refresh(&self, account: Id) -> Option<String> {
+        if tasks_remote::keeps_google_tasks(&self.session.mailbox, account) {
+            let kept = self.google_tasks_refresh.get(&account).cloned().filter(|r| !r.is_empty());
+            return kept.or_else(|| self.remembered(GOOGLE_TASKS_SECRET, account)).filter(|r| !r.is_empty());
+        }
+        let kept = self.tokens.get(&account).map(|t| t.refresh.clone()).filter(|r| !r.is_empty());
+        kept.or_else(|| self.remembered("refresh", account)).filter(|r| !r.is_empty())
     }
 
     /// Look whether any account's to-dos are due, and start a job when they are. Called every
@@ -130,19 +158,27 @@ impl MailApp {
 
     fn start_tasks_job(&mut self, account: Id, now: f64) -> bool {
         let Some(owner) = self.session.mailbox.account(account).cloned() else { return false };
-        let Some(oauth) = owner.oauth.clone() else { return false };
-        let kept = self.tokens.get(&account).map(|t| t.refresh.clone()).filter(|r| !r.is_empty());
-        let refresh = kept.or_else(|| self.remembered("refresh", owner.id)).unwrap_or_default();
-        if refresh.is_empty() {
-            // (Nothing to renew with: Send/Receive signs in first.)
+        // (Google Tasks: Google's registration and the account's own sign-in for the tasks.)
+        let (oauth, google_client_secret) = if owner.keeps_google_tasks() {
+            if !self.google_registration_ready() {
+                return false;
+            }
+            let google = mailcraft_model::OAuth { provider: mailcraft_model::OAuthProvider::Google, ..Default::default() };
+            (self.effective_oauth(google), self.google_client_secret().to_string())
+        } else {
+            let Some(oauth) = owner.oauth.clone() else { return false };
+            (self.effective_oauth(oauth), String::new())
+        };
+        let Some(refresh) = self.tasks_refresh(account) else {
+            // (Nothing to renew with: Send/Receive signs in first, or Google Tasks is to be connected.)
             return false;
-        }
+        };
         let Ok(upload) = tasks_remote::task_upload(&self.session.mailbox, account) else { return false };
         let given = fingerprint(&refresh);
         let deletes = tasks_remote::carries_delete(&upload);
         let zone = self.session.zone();
         let begun = Begun { opening: self.session.openings(), account: owner.clone() };
-        let job = TasksJob { account: owner, oauth: self.effective_oauth(oauth), refresh, upload, zone, cancel: Default::default() };
+        let job = TasksJob { account: owner, oauth, refresh, upload, zone, cancel: Default::default(), google_client_secret };
         let Some(graph) = self.services.graph_tasks.as_ref().filter(|_| !self.offline()) else { return false };
         let rx = graph(job);
         // A delete that goes out can't be undone: the task would come back here, gone there (#706).
@@ -165,6 +201,7 @@ impl MailApp {
             return;
         }
         let ran_for = begun.account.clone();
+        let google = ran_for.keeps_google_tasks();
         let result = match rx.try_recv() {
             Ok(result) => result,
             Err(std::sync::mpsc::TryRecvError::Empty) => return,
@@ -183,9 +220,15 @@ impl MailApp {
             && !tokens.refresh.is_empty()
             && !self.signed_in_as_other(account, tokens)
         {
-            self.remember("refresh", account, &tokens.refresh);
-            if let Some(mail) = self.tokens.get_mut(&account) {
-                mail.refresh = tokens.refresh.clone();
+            if google {
+                // (Google Tasks' own sign-in: never put in mail's place.)
+                self.remember(GOOGLE_TASKS_SECRET, account, &tokens.refresh);
+                self.google_tasks_refresh.insert(account, tokens.refresh.clone());
+            } else {
+                self.remember("refresh", account, &tokens.refresh);
+                if let Some(mail) = self.tokens.get_mut(&account) {
+                    mail.refresh = tokens.refresh.clone();
+                }
             }
         }
         let settling = self.tasks.settling.get(&account).copied().unwrap_or(0);
@@ -203,7 +246,11 @@ impl MailApp {
                 self.tasks.perm.insert(account, Permission::Needed);
             }
         } else if result.denied {
-            let said = tl!("This account may not use its to-dos through Microsoft Graph").to_string();
+            let said = if google {
+                tl!("This account may not use Google Tasks").to_string()
+            } else {
+                tl!("This account may not use its to-dos through Microsoft Graph").to_string()
+            };
             self.tasks.perm.insert(account, Permission::Refused(said));
         } else if result.sign_in_refused && result.tokens.is_none() && settling == 0 {
             // The refresh itself was refused, for mail too: never "not asked yet" with no way back
@@ -258,7 +305,8 @@ impl MailApp {
         }
         // A question that went away unanswered is not asked again by itself.
         let asking: Vec<Id> = self.tasks.perm.iter().filter(|(_, p)| **p == Permission::Asking).map(|(a, _)| *a).collect();
-        let still = self.signing_in.is_some() || matches!(&self.dialog, Some(Dialog::Confirm { command, .. }) if command == "ui.allowTasks");
+        let still = self.signing_in.is_some()
+            || matches!(&self.dialog, Some(Dialog::Confirm { command, .. }) if command == "ui.allowTasks" || command == "ui.connectGoogleTasks");
         if !still {
             for account in asking {
                 self.tasks.perm.insert(account, Permission::Declined);
@@ -362,8 +410,12 @@ impl MailApp {
         Some((line, true))
     }
 
-    /// The question before Microsoft's page: what is asked of the owner and why.
+    /// The question before Microsoft's page: what is asked of the owner and why. (Google's, for an
+    /// account linked to Google Tasks: [`MailApp::ask_google_tasks`].)
     pub(crate) fn ask_tasks(&mut self, account: Id) -> bool {
+        if tasks_remote::keeps_google_tasks(&self.session.mailbox, account) {
+            return self.ask_google_tasks(account);
+        }
         let Some(address) = self.session.mailbox.account(account).map(|a| a.email.trim().to_string()) else { return false };
         let text = crate::i18n::fmt(
             tl!(
@@ -460,11 +512,14 @@ impl MailApp {
     }
 
     /// What File › Info says under an account's card about its tasks, and whether there is a way
-    /// to ask again. `None` for an account whose tasks Microsoft doesn't keep.
+    /// to ask again. `None` for an account whose tasks no server keeps.
     pub(crate) fn tasks_line(&self, account: Id) -> Option<(String, bool)> {
         self.services.graph_tasks.as_ref()?;
         if !tasks_remote::task_accounts(&self.session.mailbox).contains(&account) {
             return None;
+        }
+        if tasks_remote::keeps_google_tasks(&self.session.mailbox, account) {
+            return Some(self.google_tasks_line(account));
         }
         Some(match self.tasks.perm.get(&account) {
             Some(Permission::Given) => (tl!("Tasks: kept in step with Microsoft To Do").to_string(), false),
@@ -477,5 +532,158 @@ impl MailApp {
             Some(Permission::SignInOver(_)) => (tl!("Tasks: Microsoft no longer takes the sign-in").to_string(), true),
             None => (tl!("Tasks: not asked yet").to_string(), false),
         })
+    }
+}
+
+/// Proddyt Labs fork: Google Tasks, for an account whose to-dos Microsoft doesn't keep.
+impl MailApp {
+    /// Whether File › Info offers to connect the account's to-dos to Google Tasks: an account of
+    /// the owner's own (not a shared mailbox) whose to-dos no server keeps yet, at Google (Gmail's
+    /// servers, a Google sign-in, or a Gmail address).
+    pub(crate) fn offers_google_tasks(&self, account: Id) -> bool {
+        let Some(a) = self.session.mailbox.account(account) else { return false };
+        let at_google = a.is_gmail()
+            || a.oauth.as_ref().is_some_and(|o| o.provider == mailcraft_model::OAuthProvider::Google)
+            || a.email.trim().rsplit_once('@').is_some_and(|(_, domain)| mailcraft_model::gmail::is_gmail_host(domain));
+        self.services.graph_tasks.is_some() && !a.is_shared() && !a.keeps_tasks() && a.kind.has_server() && at_google
+    }
+
+    /// What File › Info says of Google Tasks for an account it offers it to
+    /// ([`MailApp::offers_google_tasks`]), and whether it can be connected from here: a build
+    /// without a Google registration says why not.
+    pub(crate) fn google_tasks_offer(&self, account: Id) -> Option<(String, bool)> {
+        if !self.offers_google_tasks(account) {
+            return None;
+        }
+        if !self.google_registration_ready() {
+            return Some((tl!("Google Tasks: not available in this build (it has no Google registration)").to_string(), false));
+        }
+        Some((tl!("Google Tasks: not connected").to_string(), true))
+    }
+
+    /// What File › Info says of an account linked to Google Tasks, and whether it can be connected
+    /// again from here.
+    fn google_tasks_line(&self, account: Id) -> (String, bool) {
+        if !self.google_registration_ready() {
+            return (tl!("Tasks: Google Tasks can't be reached from this build (it has no Google registration)").to_string(), false);
+        }
+        match self.tasks.perm.get(&account) {
+            Some(Permission::Given) => (tl!("Tasks: kept in step with Google Tasks").to_string(), false),
+            Some(Permission::Asking) => (tl!("Tasks: waiting for Google's page…").to_string(), false),
+            Some(Permission::Refused(why)) => {
+                (crate::i18n::fmt(tl!("Tasks: Google Tasks not connected ({why})"), &[("why", crate::forms::kit::shown(why, 90).as_str())]), true)
+            }
+            Some(Permission::SignInOver(_) | Permission::Needed) => (tl!("Tasks: Google Tasks needs you to connect again").to_string(), true),
+            Some(Permission::Declined) => (tl!("Tasks: kept on this computer only (Google Tasks not connected)").to_string(), true),
+            None if self.tasks_refresh(account).is_none() => (tl!("Tasks: Google Tasks not connected yet").to_string(), true),
+            None => (tl!("Tasks: Google Tasks, not read yet").to_string(), false),
+        }
+    }
+
+    /// The question before Google's page: what is asked of the owner and why. Nothing is sent
+    /// before a yes.
+    pub(crate) fn ask_google_tasks(&mut self, account: Id) -> bool {
+        let Some(address) = self.session.mailbox.account(account).map(|a| a.email.trim().to_string()) else { return false };
+        if self.dialog.is_some() || self.signing_in.is_some() {
+            return false;
+        }
+        let text = crate::i18n::fmt(
+            tl!(
+                "To keep the tasks of {address} in step with Google Tasks, MailCraft needs your permission to read and change your Google Tasks lists and tasks. Google's page opens in your browser to ask you; choose {address} there.\n\nTasks made here or in Google Tasks then appear in both, and so do changes and tasks marked complete. Until you allow it, nothing of your tasks is sent to Google."
+            ),
+            &[("address", &address)],
+        );
+        let ask = Question {
+            title: tl!("Connect Google Tasks").to_string(),
+            text,
+            action: tl!("Continue").to_string(),
+            with: Value::Null,
+            more: Vec::new(),
+            note: None,
+            cancel: None,
+            tick: None,
+        };
+        self.dialog = Some(Dialog::Confirm { command: "ui.connectGoogleTasks".to_string(), params: json!({"account": account}), ask });
+        true
+    }
+
+    /// `ui.connectGoogleTasks`: Google's page, for the owner's Google Tasks alone, because the
+    /// owner said go ahead.
+    pub(crate) fn begin_google_tasks_sign_in(&mut self, account: Id) -> Result<Value, String> {
+        let owner = self.session.mailbox.account(account).filter(|a| !a.is_shared() && !a.keeps_microsoft_tasks() && a.kind.has_server()).cloned();
+        let owner = owner.ok_or_else(|| tl!("This account's tasks can't be kept in step with Google Tasks").to_string())?;
+        if !self.google_registration_ready() {
+            return Err(tl!(
+                "This build of MailCraft has no Google registration, so Google Tasks can't be connected. It is built with one when MAILCRAFT_GOOGLE_CLIENT_ID and MAILCRAFT_GOOGLE_CLIENT_SECRET are set."
+            )
+            .to_string());
+        }
+        let google = mailcraft_model::OAuth { provider: mailcraft_model::OAuthProvider::Google, ..Default::default() };
+        self.google_tasks_next = true;
+        let begun = self.begin_sign_in(owner.id, google, &owner.email, String::new(), false, false);
+        self.google_tasks_next = false;
+        begun?;
+        self.tasks.perm.insert(account, Permission::Asking);
+        self.session.sync_status =
+            tl!("Allow MailCraft to keep your tasks in step with Google Tasks on the page that opened in your browser…").to_string();
+        Ok(json!({"pending": "signIn", "account": owner.id}))
+    }
+
+    /// The owner answered on Google's page about Google Tasks: with a lasting token for the
+    /// account's own Google account, it is linked and its tasks are kept in step at once; without,
+    /// why not is said.
+    pub(crate) fn google_tasks_signed_in(&mut self, account: Id, answer: Result<Tokens, String>) {
+        use crate::approval::{GOOGLE_SIGN_IN_BLOCKED, NO_BROWSER};
+        self.session.sync_status.clear();
+        match answer {
+            // (Somebody else's tokens are neither used nor remembered, #103; Google always says who.)
+            Ok(tokens) if self.signed_in_as_other(account, &tokens) => {
+                self.tasks.perm.insert(account, Permission::Needed);
+            }
+            Ok(tokens) if tokens.refresh.is_empty() => {
+                let said = tl!("Google didn't give MailCraft a lasting permission for Google Tasks: connect again");
+                self.tasks.perm.insert(account, Permission::Refused(said.to_string()));
+                self.status(said);
+            }
+            Ok(tokens) => {
+                self.remember(GOOGLE_TASKS_SECRET, account, &tokens.refresh);
+                self.google_tasks_refresh.insert(account, tokens.refresh.clone());
+                if let Err(e) = self.run("tasks.linkGoogle", json!({"account": account, "linked": true})) {
+                    self.status(crate::i18n::fmt(tl!("Google Tasks wasn't connected: {error}"), &[("error", &e)]));
+                    return;
+                }
+                log::info!("tasks, account {account}: Google Tasks connected; the next job reads it");
+                self.tasks.perm.remove(&account);
+                self.tasks.settling.insert(account, SETTLING_TRIES);
+                self.tasks.book.worked(account);
+                self.tasks.book.forget_checked(account);
+                self.status(tl!("Google Tasks connected: your tasks are kept in step with it"));
+            }
+            Err(e) if e == GOOGLE_SIGN_IN_BLOCKED => {
+                let said = tl!("Google's policy doesn't let MailCraft use Google Tasks for this account");
+                self.tasks.perm.insert(account, Permission::Refused(said.to_string()));
+                self.status(said);
+            }
+            Err(e) if e == NO_BROWSER => {
+                self.tasks.perm.insert(account, Permission::Declined);
+                self.status(crate::i18n::fmt(tl!("Tasks stay on this computer for now: {error}"), &[("error", &e)]));
+            }
+            Err(e) => {
+                let said = crate::i18n::fmt(tl!("Google Tasks wasn't connected: {error}"), &[("error", &e)]);
+                self.tasks.perm.insert(account, Permission::Refused(said.clone()));
+                self.status(said);
+            }
+        }
+    }
+
+    /// File › Info's Disconnect: the account's to-dos stay on this computer, Google is told
+    /// nothing, and its sign-in for Google Tasks is forgotten.
+    pub(crate) fn disconnect_google_tasks(&mut self, account: Id) {
+        let _ = self.run("tasks.linkGoogle", json!({"account": account, "linked": false}));
+        self.google_tasks_refresh.remove(&account);
+        self.tasks.perm.remove(&account);
+        if let Some(a) = self.session.mailbox.account(account).cloned() {
+            self.forget_account_secret(GOOGLE_TASKS_SECRET, &a);
+        }
     }
 }

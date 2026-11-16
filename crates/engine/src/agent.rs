@@ -486,6 +486,9 @@ const ACCOUNTS: &[&str] = &[
     "ui.allowSharedSend",
     "ui.allowSharedCalendars",
     "ui.allowTasks",
+    // Proddyt Labs fork: Google's page for the owner's Google Tasks, and the account linked to it.
+    "ui.connectGoogleTasks",
+    "tasks.linkGoogle",
     "ui.allowRules",
     "ui.allowAutomaticReplies",
     "ui.checkCalendar",

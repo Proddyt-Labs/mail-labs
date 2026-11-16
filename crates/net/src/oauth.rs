@@ -103,6 +103,14 @@ const MICROSOFT_LOGIN: &str = "https://login.microsoftonline.com";
 const GOOGLE_AUTHORIZE: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN: &str = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPE: &str = "https://mail.google.com/ openid email";
+/// Gmail's permission, without which a mail sign-in with Google is of no use.
+const GOOGLE_MAIL: &str = "https://mail.google.com/";
+/// Proddyt Labs fork: reading and changing the owner's Google Tasks, without which a tasks
+/// sign-in with Google is of no use.
+const GOOGLE_TASKS: &str = "https://www.googleapis.com/auth/tasks";
+/// Proddyt Labs fork: what Google's page is asked for to keep the to-dos in step: Google Tasks,
+/// and who it is that signed in (so that another Google account chosen on the page is noticed).
+pub const GOOGLE_TASKS_SCOPE: &str = "https://www.googleapis.com/auth/tasks openid email";
 const GOOGLE_DESKTOP_SECRET: &str = match option_env!("MAILCRAFT_GOOGLE_CLIENT_SECRET") {
     Some(secret) => secret,
     None => "",
@@ -1911,7 +1919,9 @@ pub fn sign_in_explained_via(
 }
 
 mod google;
-pub use google::{refresh_google_at, sign_in_google_at};
+pub use google::{
+    refresh_google_at, refresh_google_tasks, refresh_google_tasks_at, sign_in_google_at, sign_in_google_tasks, sign_in_google_tasks_at,
+};
 
 #[cfg(test)]
 mod google_tests;

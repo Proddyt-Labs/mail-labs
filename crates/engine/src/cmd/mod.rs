@@ -144,6 +144,9 @@ mod snooze_tests;
 pub mod sync_progress;
 pub mod tasks;
 pub mod tasks_remote;
+// Proddyt Labs fork: Google Tasks.
+#[cfg(test)]
+mod google_tasks_tests;
 #[cfg(test)]
 mod tasks_remote_tests;
 #[cfg(test)]

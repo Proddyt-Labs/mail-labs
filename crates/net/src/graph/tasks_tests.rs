@@ -217,7 +217,7 @@ fn a_change_sends_only_the_fields_that_changed() {
     let server = serve(&state);
     let patch =
         TaskPatch { title: Some("New".into()), due: Some(Date::new(2026, 11, 2)), completed: Some(Some(1_790_000_000)), ..Default::default() };
-    let op = TaskOp { kind: TaskOpKind::Update, task: 3, id: "A".into(), list: "L2".into(), patch };
+    let op = TaskOp { kind: TaskOpKind::Update, task: 3, id: "A".into(), list: "L2".into(), patch, ..Default::default() };
     let done = push_tasks_at(&server.url(""), TOKEN, &upload(vec![op]), Zone::UTC);
     assert_eq!(done.outcomes[0].result, TaskResult::Done);
     let task = state.lock().unwrap().lists[1].2[0].clone();

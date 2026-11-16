@@ -5,6 +5,10 @@
 //! is to be asked), what waits to go up told to the server, then the lists and tasks read whole.
 //! Nothing of a task is logged.
 //!
+//! Proddyt Labs fork: an account linked to Google Tasks runs the same job against Google
+//! ([`run_google_with`]): its own refresh token for the tasks, Google's registration, and
+//! `mailcraft_net::google_tasks` in Graph's place. The answer is the same [`TasksResult`].
+//!
 //! What to run and when is the engine's ([`mailcraft_engine::sync_driver`]); what the answer
 //! means for the mailbox is [`mailcraft_engine::cmd::tasks_remote`], applied by the front end.
 
@@ -13,7 +17,7 @@ use std::sync::atomic::AtomicBool;
 
 use mailcraft_model::remote_tasks::{TasksDownload, TasksUpload, TasksUploaded};
 use mailcraft_model::sync::Tokens;
-use mailcraft_model::{Account, AccountKind, Id, OAuth};
+use mailcraft_model::{Account, AccountKind, Id, OAuth, OAuthProvider};
 #[cfg(not(target_arch = "wasm32"))]
 use mailcraft_net::oauth::{GraphTokens, Resource};
 #[cfg(not(target_arch = "wasm32"))]
@@ -32,6 +36,9 @@ pub struct TasksJob {
     /// and due dates are days there, read from and sent to the server as its midnights (#809).
     pub zone: mailcraft_time::Zone,
     pub cancel: Arc<AtomicBool>,
+    /// Proddyt Labs fork: for Google Tasks (`oauth` names Google), the installed-app secret of the
+    /// build's Google registration, for this one job. Never stored; empty for Microsoft.
+    pub google_client_secret: String,
 }
 
 /// What a [`TasksJob`] came to. Never an error as a whole: every trouble is a line in the answer.
@@ -63,6 +70,15 @@ pub fn mail_resource(account: &Account) -> Resource {
 /// lists and tasks read whole.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn run(job: TasksJob) -> TasksResult {
+    if job.oauth.provider == OAuthProvider::Google {
+        let secret = job.google_client_secret.clone();
+        return run_google_with(
+            job,
+            &move |oauth, refresh| mailcraft_net::oauth::refresh_google_tasks(oauth, &secret, refresh),
+            &|token, upload| mailcraft_net::google_tasks::push_tasks(token, upload),
+            &mailcraft_net::google_tasks::tasks,
+        );
+    }
     let mail = mail_resource(&job.account);
     run_with(job, &move |oauth, refresh| mailcraft_net::oauth::refresh_graph_tasks(oauth, refresh, mail))
 }
@@ -106,6 +122,57 @@ pub fn run_with(job: TasksJob, renew: &dyn Fn(&OAuth, &str) -> Result<GraphToken
         Err(NetError::Forbidden(_)) => out.denied = true,
         Err(e) if e.is_refused_sign_in() => out.sign_in_refused = true,
         Err(e) => out.errors.push(format!("Couldn't bring the tasks down: {e}")),
+    }
+    out
+}
+
+/// Proddyt Labs fork: [`run`] for an account linked to Google Tasks, with how the token is had
+/// (`renew`), how the changes are told (`push`) and how the lists are read (`read`) handed in (the
+/// tests' own ask nobody). As for Microsoft: the token, what waits told to Google, then the lists
+/// and tasks read whole. A refresh token Google no longer takes asks the owner to connect again.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn run_google_with(
+    job: TasksJob,
+    renew: &dyn Fn(&OAuth, &str) -> Result<Tokens, NetError>,
+    push: &dyn Fn(&str, &TasksUpload) -> TasksUploaded,
+    read: &dyn Fn(&str) -> Result<TasksDownload, NetError>,
+) -> TasksResult {
+    use mailcraft_model::remote_tasks::TaskResult;
+    let mut out = TasksResult { account: job.account.id, ..Default::default() };
+    let access = match renew(&job.oauth, &job.refresh) {
+        Ok(tokens) => {
+            let access = tokens.access.clone();
+            out.tokens = Some(tokens);
+            access
+        }
+        Err(e) if e.is_refused_sign_in() => {
+            out.sign_in_refused = true;
+            return out;
+        }
+        Err(e) => {
+            out.errors.push(format!("Couldn't sign in to Google for the tasks: {e}"));
+            return out;
+        }
+    };
+    if !job.upload.ops.is_empty() {
+        let uploaded = push(&access, &job.upload).for_account(&job.account);
+        out.denied = uploaded.outcomes.iter().any(|o| o.result == TaskResult::Denied);
+        let refused = uploaded.token_refused;
+        out.uploaded = Some(uploaded);
+        if refused {
+            out.sign_in_refused = true;
+            return out;
+        }
+    }
+    if out.denied {
+        return out;
+    }
+    match read(&access) {
+        Ok(download) => out.download = Some(download.for_account(&job.account)),
+        // The token covers Google Tasks and Google still says no: the owner is asked again.
+        Err(NetError::Forbidden(_)) => out.consent_needed = true,
+        Err(e) if e.is_refused_sign_in() => out.sign_in_refused = true,
+        Err(e) => out.errors.push(format!("Couldn't bring the Google tasks down: {e}")),
     }
     out
 }

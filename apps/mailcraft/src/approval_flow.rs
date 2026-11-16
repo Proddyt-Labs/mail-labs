@@ -103,6 +103,7 @@ fn sign_in_request(cancel: &Arc<AtomicBool>) -> SignInRequest {
         tasks: false,
         rules: false,
         replies: false,
+        google_tasks: false,
     }
 }
 

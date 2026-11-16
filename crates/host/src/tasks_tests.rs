@@ -21,6 +21,7 @@ fn job() -> TasksJob {
         upload: TasksUpload::default(),
         zone: mailcraft_time::Zone::UTC,
         cancel: Default::default(),
+        google_client_secret: String::new(),
     }
 }
 

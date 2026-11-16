@@ -445,6 +445,14 @@ pub struct Account {
     /// or another language makes no second one. `None` until the first message is snoozed.
     #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "crate::sync::lenient")]
     pub snoozed_folder: Option<Id>,
+    /// Proddyt Labs fork: the owner connected this account's to-dos to Google Tasks
+    /// (`tasks.linkGoogle`, after Google's own page said yes to `ui.connectGoogleTasks`). Its
+    /// refresh token for the tasks is a sign-in of its own, kept like any other in the system's
+    /// credential store and never here. Off for every other account, for one whose to-dos
+    /// Microsoft keeps ([`Account::keeps_microsoft_tasks`]), and in a file from before there was
+    /// one.
+    #[serde(skip_serializing_if = "is_false", deserialize_with = "crate::sync::lenient_or_default")]
+    pub google_tasks: bool,
 }
 
 impl Account {
@@ -708,14 +716,28 @@ impl Account {
         self.shared_of.is_some()
     }
 
-    /// Whether Microsoft keeps its to-dos: it signs in with Microsoft and is not a shared mailbox.
+    /// Whether a server keeps its to-dos: Microsoft To Do ([`Account::keeps_microsoft_tasks`]) or,
+    /// in the Proddyt Labs fork, Google Tasks ([`Account::keeps_google_tasks`]).
     pub fn keeps_tasks(&self) -> bool {
+        self.keeps_microsoft_tasks() || self.keeps_google_tasks()
+    }
+
+    /// Whether Microsoft keeps its to-dos: it signs in with Microsoft and is not a shared mailbox.
+    pub fn keeps_microsoft_tasks(&self) -> bool {
         !self.is_shared() && self.kind != AccountKind::Jmap && self.oauth.as_ref().is_some_and(|o| o.provider == OAuthProvider::Microsoft)
     }
 
-    /// Whether its contacts are read from Microsoft: as for its to-dos ([`Account::keeps_tasks`]).
+    /// Proddyt Labs fork: whether Google Tasks keeps its to-dos: the owner connected it
+    /// ([`Account::google_tasks`]), it is not a shared mailbox, and Microsoft doesn't keep them
+    /// already (one account has one place for its to-dos).
+    pub fn keeps_google_tasks(&self) -> bool {
+        self.google_tasks && !self.is_shared() && !self.keeps_microsoft_tasks()
+    }
+
+    /// Whether its contacts are read from Microsoft: as for its to-dos with Microsoft
+    /// ([`Account::keeps_microsoft_tasks`]).
     pub fn keeps_contacts(&self) -> bool {
-        self.keeps_tasks()
+        self.keeps_microsoft_tasks()
     }
 
     /// The shared mailbox's own address, when this is one. Read here rather than at each call
