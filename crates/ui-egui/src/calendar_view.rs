@@ -1726,7 +1726,7 @@ fn typed(ui: &mut Ui, key: (&str, Id), start: &str) -> Option<String> {
     let id = ui.make_persistent_id(key);
     let mut text: String = ui.data_mut(|d| d.get_temp::<String>(id)).unwrap_or_else(|| start.to_string());
     let resp = ui.add(egui::TextEdit::singleline(&mut text).desired_width(170.0).char_limit(100));
-    let done = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !text.trim().is_empty();
+    let done = resp.lost_focus() && crate::keys::enter(ui.ctx(), ui.layer_id()) && !text.trim().is_empty();
     if done {
         ui.data_mut(|d| d.remove::<String>(id));
         return Some(text.trim().to_string());
