@@ -1445,6 +1445,42 @@ fn calendar_menu(ui: &mut Ui, app: &mut MailApp, row: &CalendarRow, several: boo
             }
         }
     });
+    // Kept on this computer (an internet calendar too): its name and its group are the owner's
+    // (Proddyt Labs fork).
+    let here = app.session.mailbox.calendar(row.id).filter(|c| mailcraft_engine::cmd::remote::keeper(&app.session.mailbox, &c.origin).is_none()).map(|c| (c.name.clone(), c.group.clone()));
+    if let Some((name, group)) = here {
+        ui.separator();
+        ui.menu_button(tl!("Group"), |ui| {
+            let mut taken: Vec<String> = Vec::new();
+            for c in &app.session.mailbox.calendars {
+                let g = c.group.trim();
+                if !g.is_empty() && !taken.iter().any(|t| t.eq_ignore_ascii_case(g)) {
+                    taken.push(g.to_string());
+                }
+            }
+            taken.sort_by_key(|g| g.to_lowercase());
+            mi_check(ui, app, "No Group", group.trim().is_empty(), "calendar.setGroup", json!({"id": row.id, "group": ""}));
+            for g in taken {
+                let on = g.eq_ignore_ascii_case(group.trim());
+                if ui.add(egui::Button::new(g.as_str()).selected(on).min_size(vec2(170.0, 0.0))).clicked() {
+                    let _ = app.run("calendar.setGroup", json!({"id": row.id, "group": g}));
+                    ui.close();
+                }
+            }
+            ui.separator();
+            ui.label(tl!("New group:"));
+            if let Some(text) = typed(ui, ("calendar_new_group", row.id), "") {
+                let _ = app.run("calendar.setGroup", json!({"id": row.id, "group": text}));
+                ui.close();
+            }
+        });
+        ui.menu_button(tl!("Rename"), |ui| {
+            if let Some(text) = typed(ui, ("calendar_rename", row.id), &name) {
+                let _ = app.run("calendar.rename", json!({"id": row.id, "name": text}));
+                ui.close();
+            }
+        });
+    }
     // One opened by address is the owner's own list's: it comes off it here (#70).
     let opened = app.session.mailbox.calendar(row.id).is_some_and(|c| mailcraft_model::remote::opened_address(&c.origin.id).is_some());
     if opened {
@@ -1464,6 +1500,21 @@ fn calendar_menu(ui: &mut Ui, app: &mut MailApp, row: &CalendarRow, several: boo
         }
         None => {}
     }
+}
+
+/// A one-line field inside a menu that starts as `start`: what was typed, once Enter is pressed
+/// on something that isn't blank.
+fn typed(ui: &mut Ui, key: (&str, Id), start: &str) -> Option<String> {
+    let id = ui.make_persistent_id(key);
+    let mut text: String = ui.data_mut(|d| d.get_temp::<String>(id)).unwrap_or_else(|| start.to_string());
+    let resp = ui.add(egui::TextEdit::singleline(&mut text).desired_width(170.0).char_limit(100));
+    let done = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !text.trim().is_empty();
+    if done {
+        ui.data_mut(|d| d.remove::<String>(id));
+        return Some(text.trim().to_string());
+    }
+    ui.data_mut(|d| d.insert_temp(id, text));
+    None
 }
 
 /// For a calendar of the list that is a shared mailbox's (#70): the mailbox's address and `true`

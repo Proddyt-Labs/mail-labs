@@ -161,6 +161,8 @@ const CALENDARS: &[&str] = &[
     "calendar.refreshSubscriptions",
     "calendar.applyFeed",
     "calendar.unsubscribe",
+    "calendar.setGroup",
+    "calendar.rename",
     "calendar.showCalendar",
     "calendar.setCurrent",
     "calendar.calendars",

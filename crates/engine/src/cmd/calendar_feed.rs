@@ -26,7 +26,12 @@ use crate::{CmdError, CmdResult, CommandSpec, Session, p};
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("calendar.subscribe", "Add Calendar from Internet", "Home › Manage Calendars", subscribe)
-            .params(r##"{"url": "https://… or http:// to a private network, to an .ics file", "name": string, "color"?: "#RRGGBB"} — a calendar that can only be read, whose events are the file's, read again every three hours; answers {"id"}"##),
+            .params(r##"{"url": "https://… or http:// to a private network, to an .ics file", "name": string, "color"?: "#RRGGBB", "group"?: string} — a calendar that can only be read, whose events are the file's, read again every three hours; listed under `group` when there is one; answers {"id"}"##),
+        CommandSpec::new("calendar.setGroup", "Move to Group", "Folder › Actions", set_group).params(
+            r#"{"id": number, "group": string ("" for none)} — the heading a calendar kept on this computer (an internet calendar too) is listed under; a server's calendars keep their server's groups"#,
+        ),
+        CommandSpec::new("calendar.rename", "Rename Calendar", "Folder › Actions", rename)
+            .params(r#"{"id": number, "name": string} — a calendar kept on this computer (an internet calendar too); a server's calendars keep their server's names"#),
         CommandSpec::new("calendar.refreshSubscriptions", "Update Internet Calendars", "Send / Receive", refresh)
             .pure()
             .params(r#"{} — marks every internet calendar to be read at once; the window does it (answers {"subscriptions": number})"#),
@@ -64,10 +69,51 @@ fn subscribe(s: &mut Session, v: &Value) -> CmdResult {
         Some(c) => mailcraft_model::Rgb::parse(c).ok_or_else(|| bad("`color` looks like #2E8B57"))?,
         None => super::calendar::next_color(&s.mailbox),
     };
+    let group = match p::str(v, "group") {
+        Some(g) => clean_name(g).unwrap_or_default(),
+        None => String::new(),
+    };
     let id = s.mailbox.alloc_id();
     let subscription = Some(Subscription { url, stale: true, ..Default::default() });
-    s.mailbox.calendars.push(Calendar { id, name, color, visible: true, rights: Rights::Read, subscription, ..Default::default() });
+    s.mailbox.calendars.push(Calendar { id, name, color, group, visible: true, rights: Rights::Read, subscription, ..Default::default() });
     Ok(json!({"id": id}))
+}
+
+/// The calendar `id` when it is one this computer keeps (no server lists it): its name and group
+/// are the owner's to change here.
+fn kept_here(s: &mut Session, id: Id) -> Result<&mut Calendar, CmdError> {
+    let mailbox = &s.mailbox;
+    let Some(calendar) = mailbox.calendar(id) else { return Err(failed!("no calendar with id {id}", id)) };
+    if super::remote::keeper(mailbox, &calendar.origin).is_some() {
+        return Err(fail("that calendar is a server's: its name and group are the server's"));
+    }
+    Ok(s.mailbox.calendars.iter_mut().find(|c| c.id == id).expect("found above"))
+}
+
+fn set_group(s: &mut Session, v: &Value) -> CmdResult {
+    let id = p::req_id(v, "id")?;
+    let group = clean_name(p::req_str(v, "group")?).unwrap_or_default();
+    // A handful of headings at most, as for a server's groups.
+    let mailbox = &s.mailbox;
+    let mut headings: HashSet<String> = mailbox.calendars.iter().filter(|c| c.id != id).map(|c| c.group.to_lowercase()).collect();
+    headings.insert(group.to_lowercase());
+    if headings.len() > super::calendar_settings::MAX_GROUPS + 1 {
+        return Err(fail("there are too many groups"));
+    }
+    let calendar = kept_here(s, id)?;
+    calendar.group = group.clone();
+    Ok(json!({"id": id, "group": group}))
+}
+
+fn rename(s: &mut Session, v: &Value) -> CmdResult {
+    let id = p::req_id(v, "id")?;
+    let name = clean_name(p::req_str(v, "name")?).ok_or_else(|| bad("`name` is empty"))?;
+    if s.mailbox.calendars.iter().any(|c| c.id != id && c.name.eq_ignore_ascii_case(&name)) {
+        return Err(failed!("a calendar named \"{name}\" already exists", name));
+    }
+    let calendar = kept_here(s, id)?;
+    calendar.name = name.clone();
+    Ok(json!({"id": id, "name": name}))
 }
 
 fn refresh(s: &mut Session, _: &Value) -> CmdResult {

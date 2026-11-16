@@ -226,3 +226,56 @@ fn an_agent_may_subscribe_and_refresh_but_removing_one_needs_the_owner() {
     assert_eq!(access("calendar.applyFeed"), Some(Access::Safe));
     assert_eq!(access("calendar.unsubscribe"), Some(Access::Owner(Class::Delete)));
 }
+
+/// The headings of the list of calendars, with the names under each.
+fn listed(s: &Session) -> Vec<(String, Vec<String>)> {
+    crate::cmd::calendar_settings::calendar_groups(s)
+        .into_iter()
+        .map(|g| (g.title, g.calendars.iter().map(|id| s.mailbox.calendar(*id).unwrap().name.clone()).collect()))
+        .collect()
+}
+
+#[test]
+fn calendars_kept_here_are_listed_under_the_groups_the_owner_gives_them() {
+    let mut s = session();
+    let liga = s.run("calendar.subscribe", &json!({"url": "https://example.org/serie-a.ics", "name": "Serie A", "group": " Itália "})).unwrap()["id"].as_u64().unwrap();
+    let roma = s.run("calendar.subscribe", &json!({"url": "https://example.org/roma.ics", "name": "Roma"})).unwrap()["id"].as_u64().unwrap();
+    let br = s.run("calendar.subscribe", &json!({"url": "https://example.org/br.ics", "name": "Brasileirão", "group": "Brasil"})).unwrap()["id"].as_u64().unwrap();
+    assert_eq!(s.mailbox.calendar(liga).unwrap().group, "Itália");
+    let before = listed(&s);
+    // The ungrouped ones under the usual heading; after them each group by name.
+    let at = |title: &str| before.iter().position(|(t, _)| t == title).unwrap();
+    let plain = before.iter().position(|(_, names)| names.contains(&"Roma".to_string())).unwrap();
+    assert!(plain < at("Brasil") && at("Brasil") < at("Itália"));
+    assert_eq!(before[at("Brasil")].1, ["Brasileirão"]);
+    assert_eq!(before[at("Itália")].1, ["Serie A"]);
+    // A group by another spelling is the same group.
+    assert_eq!(s.run("calendar.setGroup", &json!({"id": roma, "group": "itália"})).unwrap()["group"], "itália");
+    assert_eq!(listed(&s).last().unwrap().1, ["Serie A", "Roma"]);
+    // "" takes it out of any group.
+    s.run("calendar.setGroup", &json!({"id": br, "group": ""})).unwrap();
+    assert!(listed(&s).iter().all(|(title, _)| title != "Brasil"));
+    assert!(s.run("calendar.setGroup", &json!({"id": 999_999, "group": "X"})).is_err());
+    // Every calendar is listed once, whatever the groups.
+    let n: usize = listed(&s).iter().map(|(_, names)| names.len()).sum();
+    assert_eq!(n, s.mailbox.calendars.len());
+}
+
+#[test]
+fn a_calendar_kept_here_can_be_renamed_but_not_onto_another_name() {
+    let mut s = session();
+    let id = subscribe(&mut s);
+    s.run("calendar.subscribe", &json!({"url": "https://example.org/f1.ics", "name": "F1"})).unwrap();
+    assert_eq!(s.run("calendar.rename", &json!({"id": id, "name": "  Agenda pessoal "})).unwrap()["name"], "Agenda pessoal");
+    assert_eq!(s.mailbox.calendar(id).unwrap().name, "Agenda pessoal");
+    assert!(s.run("calendar.rename", &json!({"id": id, "name": "f1"})).is_err());
+    assert!(s.run("calendar.rename", &json!({"id": id, "name": "   "})).is_err());
+    // Renamed to its own name in other letters: fine.
+    assert!(s.run("calendar.rename", &json!({"id": id, "name": "AGENDA PESSOAL"})).is_ok());
+}
+
+#[test]
+fn naming_and_grouping_a_calendar_kept_here_is_safe_for_an_agent() {
+    assert_eq!(access("calendar.setGroup"), Some(Access::Safe));
+    assert_eq!(access("calendar.rename"), Some(Access::Safe));
+}

@@ -27,7 +27,7 @@ pub const SHARED_CALENDARS: &str = "Shared Calendars";
 /// Most calendars that are listed, most groups of one account, and most blocks of calendars side
 /// by side (the calendars beyond that share the last block).
 const MAX_LISTED: usize = 200;
-const MAX_GROUPS: usize = 30;
+pub(crate) const MAX_GROUPS: usize = 30;
 pub const MAX_PANES: usize = 8;
 /// Longest name of a time zone that is kept.
 const MAX_ZONE: usize = 64;
@@ -143,10 +143,35 @@ pub fn calendar_groups(s: &Session) -> Vec<CalendarGroup> {
             groups.push(CalendarGroup { title, account: account.id, calendars: calendars.iter().map(|c| c.id).collect() });
         }
     }
-    let here: Vec<Id> = listed.iter().filter(|c| keeper(c).is_none()).map(|c| c.id).collect();
-    if !here.is_empty() {
+    // What is kept here: those without a group under the usual heading, then one heading for each
+    // group the owner gave (Proddyt Labs fork), by name.
+    let here: Vec<&Calendar> = listed.iter().copied().filter(|c| keeper(c).is_none()).collect();
+    let plain: Vec<Id> = here.iter().filter(|c| c.group.trim().is_empty()).map(|c| c.id).collect();
+    if !plain.is_empty() {
         let title = if accounts.is_empty() { MY_CALENDARS } else { remote::LOCAL_CALENDAR };
-        groups.push(CalendarGroup { title: title.to_string(), account: 0, calendars: here });
+        groups.push(CalendarGroup { title: title.to_string(), account: 0, calendars: plain });
+    }
+    let mut names: Vec<String> = Vec::new();
+    for c in &here {
+        let name = c.group.trim();
+        if !name.is_empty() && names.len() < MAX_GROUPS && !names.iter().any(|have| have.eq_ignore_ascii_case(name)) {
+            names.push(name.to_string());
+        }
+    }
+    names.sort_by_key(|name| name.to_lowercase());
+    for name in names {
+        let calendars: Vec<Id> = here.iter().filter(|c| c.group.trim().eq_ignore_ascii_case(&name)).map(|c| c.id).collect();
+        groups.push(CalendarGroup { title: name, account: 0, calendars });
+    }
+    // A group past the last one taken is listed with the plain ones, never lost.
+    let placed: HashSet<Id> = groups.iter().flat_map(|g| g.calendars.iter().copied()).collect();
+    let stray: Vec<Id> = here.iter().map(|c| c.id).filter(|id| !placed.contains(id)).collect();
+    if !stray.is_empty() {
+        let title = if accounts.is_empty() { MY_CALENDARS } else { remote::LOCAL_CALENDAR };
+        match groups.iter_mut().find(|g| g.account == 0 && g.title == title) {
+            Some(g) => g.calendars.extend(stray),
+            None => groups.push(CalendarGroup { title: title.to_string(), account: 0, calendars: stray }),
+        }
     }
     groups
 }
