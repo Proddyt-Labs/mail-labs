@@ -1062,6 +1062,11 @@ msgstr "Sta MailCraft op de pagina die in uw browser is geopend toe uw regels op
 
 #. interface
 #: crates/ui-egui/src/task_sync.rs
+msgid "Allow MailCraft to keep your tasks in step with Google Tasks on the page that opened in your browser…"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/task_sync.rs
 #, fuzzy
 msgid "Allow MailCraft to keep your tasks in step with Microsoft To Do on the page that opened in your browser…"
 msgstr "Sta MailCraft toe uw taken bij te houden met Microsoft To Do op de pagina die in uw browser is geopend…"
@@ -2910,11 +2915,26 @@ msgstr "Verbinden"
 msgid "Connect Calendar and Contacts"
 msgstr "Agenda en contactpersonen verbinden"
 
+#. command label, interface
+#: crates/ui-egui/src/backstage.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/task_sync.rs
+msgid "Connect Google Tasks"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/backstage.rs
+msgid "Connect Google Tasks again: Google's page opens in your browser. Without it, tasks stay on this computer."
+msgstr ""
+
 #. interface
 #: crates/ui-egui/src/favorites_sync.rs
 #, fuzzy
 msgid "Connect Outlook's Favorites"
 msgstr "Favorieten van Outlook verbinden"
+
+#. interface
+#: crates/ui-egui/src/backstage.rs
+msgid "Connect again"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/backstage.rs
@@ -3767,6 +3787,11 @@ msgstr "Antwoorden rechtstreeks naar"
 #, fuzzy
 msgid "Discard"
 msgstr "Verwerpen"
+
+#. interface
+#: crates/ui-egui/src/backstage.rs
+msgid "Disconnect"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/reading/warnings.rs crates/ui-egui/src/reminders.rs
@@ -5350,6 +5375,26 @@ msgid "Google OAuth access tokens may only be sent to Google's Gmail IMAP and SM
 msgstr "OAuth-toegangstokens van Google mogen alleen naar de IMAP- en SMTP-servers van Gmail worden verzonden"
 
 #. interface
+#: crates/ui-egui/src/task_sync.rs
+msgid "Google Tasks connected: your tasks are kept in step with it"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/task_sync.rs
+msgid "Google Tasks wasn't connected: {error}"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/task_sync.rs
+msgid "Google Tasks: not available in this build (it has no Google registration)"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/task_sync.rs
+msgid "Google Tasks: not connected"
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/account_setup/help.rs
 msgid "Google blocked access to MailCraft"
 msgstr "Google heeft toegang tot MailCraft geblokkeerd"
@@ -5382,6 +5427,11 @@ msgstr "Google keerde niet terug naar MailCraft. Als u Fout 403 of Toegang geblo
 #, fuzzy
 msgid "Google didn't accept the password. An account with 2-Step Verification needs an app password: make one on Google's App passwords page, then paste it here in place of your usual password."
 msgstr "Google heeft het wachtwoord niet geaccepteerd. Een account met verificatie in 2 stappen heeft een app-wachtwoord nodig: maak er een aan op de pagina App-wachtwoorden van Google en plak het hier in plaats van uw gebruikelijke wachtwoord."
+
+#. interface
+#: crates/ui-egui/src/task_sync.rs
+msgid "Google didn't give MailCraft a lasting permission for Google Tasks: connect again"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/account_setup/help.rs
@@ -5429,6 +5479,11 @@ msgstr "Aanmelden met Google heeft de IMAP-server van Google nodig"
 #, fuzzy
 msgid "Google sign-in was declined"
 msgstr "Aanmelden met Google is geweigerd"
+
+#. interface
+#: crates/ui-egui/src/task_sync.rs
+msgid "Google's policy doesn't let MailCraft use Google Tasks for this account"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/credits.rs
@@ -6507,6 +6562,11 @@ msgid "Keep the notes and journal entries"
 msgstr ""
 
 #. interface
+#: crates/ui-egui/src/backstage.rs
+msgid "Keep this account's tasks in step with Google Tasks, both ways: Google's page opens in your browser to ask for your permission. Nothing is sent before you allow it."
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/merge_contacts.rs
 #, fuzzy
 msgid "Keep this one"
@@ -6716,6 +6776,11 @@ msgstr "Regelafstand"
 #, fuzzy
 msgid "Link"
 msgstr "Koppeling"
+
+#. command label
+#: crates/engine/src/cmd/tasks_remote.rs
+msgid "Link Google Tasks"
+msgstr ""
 
 #. ribbon
 #: crates/ui-egui/src/ribbon.rs
@@ -12724,6 +12789,11 @@ msgid "Stop keeping this Public key"
 msgstr ""
 
 #. interface
+#: crates/ui-egui/src/backstage.rs
+msgid "Stop keeping this account's tasks in step with Google Tasks. They stay on this computer, and nothing is deleted at Google."
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/chrome.rs
 #, fuzzy
 msgid "Stop opening it; the mailbox that is open stays"
@@ -12980,6 +13050,31 @@ msgstr "Taken mochten niet worden bijgehouden: {error}"
 
 #. interface
 #: crates/ui-egui/src/task_sync.rs
+msgid "Tasks: Google Tasks can't be reached from this build (it has no Google registration)"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/task_sync.rs
+msgid "Tasks: Google Tasks needs you to connect again"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/task_sync.rs
+msgid "Tasks: Google Tasks not connected ({why})"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/task_sync.rs
+msgid "Tasks: Google Tasks not connected yet"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/task_sync.rs
+msgid "Tasks: Google Tasks, not read yet"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/task_sync.rs
 #, fuzzy
 msgid "Tasks: Microsoft no longer takes the sign-in"
 msgstr "Taken: Microsoft accepteert de aanmelding niet meer"
@@ -12992,9 +13087,19 @@ msgstr "Taken: uw toestemming wordt gevraagd…"
 
 #. interface
 #: crates/ui-egui/src/task_sync.rs
+msgid "Tasks: kept in step with Google Tasks"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/task_sync.rs
 #, fuzzy
 msgid "Tasks: kept in step with Microsoft To Do"
 msgstr "Taken: bijgehouden met Microsoft To Do"
+
+#. interface
+#: crates/ui-egui/src/task_sync.rs
+msgid "Tasks: kept on this computer only (Google Tasks not connected)"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/task_sync.rs
@@ -13013,6 +13118,11 @@ msgstr "Taken: niet toegestaan ({why})"
 #, fuzzy
 msgid "Tasks: not asked yet"
 msgstr "Taken: nog niet gevraagd"
+
+#. interface
+#: crates/ui-egui/src/task_sync.rs
+msgid "Tasks: waiting for Google's page…"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/task_sync.rs
@@ -14586,6 +14696,11 @@ msgstr "Dit account mag zijn regels op de server niet wijzigen"
 
 #. interface
 #: crates/ui-egui/src/task_sync.rs
+msgid "This account may not use Google Tasks"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/task_sync.rs
 #, fuzzy
 msgid "This account may not use its to-dos through Microsoft Graph"
 msgstr "Dit account mag zijn to-do's niet via Microsoft Graph gebruiken"
@@ -14637,6 +14752,11 @@ msgstr "De agenda van dit account kan nog niet worden bevraagd: Verzenden/ontvan
 #, fuzzy
 msgid "This account's server keeps this contact. Changes made here aren't sent back yet, so it can't be edited or deleted here. Favorite and categories are kept on this computer."
 msgstr "De server van dit account bewaart deze contactpersoon. Wijzigingen die hier worden gemaakt, worden nog niet teruggestuurd, dus deze kan hier niet worden bewerkt of verwijderd. Favoriet en categorieën worden op deze computer bewaard."
+
+#. interface
+#: crates/ui-egui/src/task_sync.rs
+msgid "This account's tasks can't be kept in step with Google Tasks"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/attachment_preview.rs
@@ -14748,6 +14868,11 @@ msgstr "Deze build kan zich niet aanmelden bij dit soort account. Gebruik de des
 #, fuzzy
 msgid "This build doesn't check for new versions."
 msgstr "Deze build controleert niet op nieuwe versies."
+
+#. interface
+#: crates/ui-egui/src/task_sync.rs
+msgid "This build of MailCraft has no Google registration, so Google Tasks can't be connected. It is built with one when MAILCRAFT_GOOGLE_CLIENT_ID and MAILCRAFT_GOOGLE_CLIENT_SECRET are set."
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/calendar_view.rs
@@ -15468,6 +15593,14 @@ msgstr ""
 "Om de regels van {address} op de server te bewaren, waar ze ook worden uitgevoerd terwijl MailCraft gesloten is en in Outlook op het web en op uw telefoon verschijnen, heeft MailCraft uw toestemming nodig om uw postvakinstellingen te wijzigen, waar Microsoft de regels bewaart. De pagina van Microsoft wordt in uw browser geopend om het u één keer te vragen.\n"
 "\n"
 "Tot u het toestaat, blijven uw regels op deze computer en wordt er niets van naar Microsoft verzonden."
+
+#. interface
+#: crates/ui-egui/src/task_sync.rs
+msgid ""
+"To keep the tasks of {address} in step with Google Tasks, MailCraft needs your permission to read and change your Google Tasks lists and tasks. Google's page opens in your browser to ask you; choose {address} there.\n"
+"\n"
+"Tasks made here or in Google Tasks then appear in both, and so do changes and tasks marked complete. Until you allow it, nothing of your tasks is sent to Google."
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/task_sync.rs
