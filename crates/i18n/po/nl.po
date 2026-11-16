@@ -5562,6 +5562,11 @@ msgid "Hide This Copy"
 msgstr "Deze kopie verbergen"
 
 #. interface
+#: crates/ui-egui/src/calendar_view.rs
+msgid "Hide every calendar of this group"
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/secret_field.rs
 #, fuzzy
 msgid "Hide password"
@@ -11959,6 +11964,11 @@ msgstr "Bijdragers weergeven"
 msgid "Show Gmail's categories under the Inbox"
 msgstr "De categorieën van Gmail onder het Postvak IN tonen"
 
+#. command label
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "Show Group"
+msgstr ""
+
 #. command label, interface
 #: crates/engine/src/cmd/calendar_settings.rs crates/ui-egui/src/calendar_view.rs
 #, fuzzy
@@ -12046,6 +12056,11 @@ msgstr ""
 #, fuzzy
 msgid "Show as Conversations"
 msgstr "Weergeven als gesprekken"
+
+#. interface
+#: crates/ui-egui/src/calendar_view.rs
+msgid "Show every calendar of this group"
+msgstr ""
 
 #. command label
 #: crates/engine/src/cmd/calendar/invitation.rs
@@ -17799,6 +17814,11 @@ msgstr "geen map met id {id}"
 #, fuzzy
 msgid "no free name for the folder {name}"
 msgstr "geen vrije naam voor de map {name}"
+
+#. what a command says
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "no group of calendars called \"{path}\""
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/backstage.rs
