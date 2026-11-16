@@ -4557,6 +4557,11 @@ msgid "Gravatar is asked for the sender's picture and told a hash of their addre
 msgstr ""
 
 #. interface
+#: crates/ui-egui/src/calendar_view.rs
+msgid "Group"
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/merge_contacts.rs
 msgid "Group {n} of {total}"
 msgstr ""
@@ -6551,6 +6556,11 @@ msgstr ""
 msgid "Move to Folder"
 msgstr ""
 
+#. command label
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "Move to Group"
+msgstr ""
+
 #. command label, interface
 #: crates/engine/src/cmd/mail.rs crates/ui-egui/src/ribbon.rs
 msgid "Move to Junk"
@@ -6777,6 +6787,11 @@ msgstr ""
 
 #. interface
 #: crates/ui-egui/src/calendar_view.rs
+msgid "New group:"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/calendar_view.rs
 msgid "New items go to the calendar that is picked here"
 msgstr ""
 
@@ -6870,6 +6885,11 @@ msgstr ""
 #. interface, name, ribbon
 #: crates/ui-egui/src/ribbon.rs crates/ui-egui/src/tasks_view.rs
 msgid "No Date"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/calendar_view.rs
+msgid "No Group"
 msgstr ""
 
 #. interface
@@ -8727,7 +8747,7 @@ msgid "Removing MailCraft's data isn't available here"
 msgstr ""
 
 #. interface
-#: crates/ui-egui/src/signatures.rs
+#: crates/ui-egui/src/calendar_view.rs crates/ui-egui/src/signatures.rs
 msgid "Rename"
 msgstr ""
 
@@ -8736,6 +8756,11 @@ msgstr ""
 msgid ""
 "Rename\n"
 "Folder"
+msgstr ""
+
+#. command label
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "Rename Calendar"
 msgstr ""
 
 #. command label
@@ -14881,7 +14906,7 @@ msgid "no calendar was opened by address"
 msgstr ""
 
 #. what a command says
-#: crates/engine/src/cmd/calendar.rs crates/engine/src/cmd/calendar/share.rs crates/engine/src/cmd/calendar_extra.rs crates/engine/src/cmd/calendar_opened.rs crates/engine/src/cmd/calendar_settings.rs crates/engine/src/cmd/file.rs crates/engine/src/import_pst.rs
+#: crates/engine/src/cmd/calendar.rs crates/engine/src/cmd/calendar/share.rs crates/engine/src/cmd/calendar_extra.rs crates/engine/src/cmd/calendar_feed.rs crates/engine/src/cmd/calendar_opened.rs crates/engine/src/cmd/calendar_settings.rs crates/engine/src/cmd/file.rs crates/engine/src/import_pst.rs
 msgid "no calendar with id {id}"
 msgstr ""
 
@@ -15233,6 +15258,11 @@ msgstr ""
 #. what a command says
 #: crates/engine/src/cmd/calendar_feed.rs
 msgid "that address is subscribed to already"
+msgstr ""
+
+#. what a command says
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "that calendar is a server's: its name and group are the server's"
 msgstr ""
 
 #. what a command says
@@ -15978,6 +16008,11 @@ msgstr ""
 #. what a command says
 #: crates/engine/src/cmd/category.rs
 msgid "there are too many categories"
+msgstr ""
+
+#. what a command says
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "there are too many groups"
 msgstr ""
 
 #. what a command says

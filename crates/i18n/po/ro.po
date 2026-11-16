@@ -5499,6 +5499,11 @@ msgid "Gravatar is asked for the sender's picture and told a hash of their addre
 msgstr "Gravatar este întrebat de imaginea expeditorului și primește un hash al adresei lui; altfel, favicon.im și apoi Google sunt întrebate de pictograma site-ului său și primesc domeniul expeditorului. Astfel aceste servicii află ale cui imagini vă uitați. Doar pentru persoanele pe care le cunoașteți (contactele dvs. și cei cărora le-ați scris) și pentru e-mailurile ale căror imagini le descărcați, niciodată pentru E-mail nedorit, iar imaginea unui expeditor doar când serverul de e-mail confirmă că mesajul e de la el."
 
 #. interface
+#: crates/ui-egui/src/calendar_view.rs
+msgid "Group"
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/merge_contacts.rs
 #, fuzzy
 msgid "Group {n} of {total}"
@@ -7902,6 +7907,11 @@ msgstr "Mutare în categorie"
 msgid "Move to Folder"
 msgstr "Mutare în dosar"
 
+#. command label
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "Move to Group"
+msgstr ""
+
 #. command label, interface
 #: crates/engine/src/cmd/mail.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
@@ -8184,6 +8194,11 @@ msgstr "Categorie nouă"
 
 #. interface
 #: crates/ui-egui/src/calendar_view.rs
+msgid "New group:"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/calendar_view.rs
 #, fuzzy
 msgid "New items go to the calendar that is picked here"
 msgstr "Elementele noi merg în calendarul ales aici"
@@ -8299,6 +8314,11 @@ msgstr "Fără culoare"
 #, fuzzy
 msgid "No Date"
 msgstr "Fără dată"
+
+#. interface
+#: crates/ui-egui/src/calendar_view.rs
+msgid "No Group"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/graph_switch.rs
@@ -10534,7 +10554,7 @@ msgid "Removing MailCraft's data isn't available here"
 msgstr "Eliminarea datelor MailCraft nu este disponibilă aici"
 
 #. interface
-#: crates/ui-egui/src/signatures.rs
+#: crates/ui-egui/src/calendar_view.rs crates/ui-egui/src/signatures.rs
 #, fuzzy
 msgid "Rename"
 msgstr "Redenumire"
@@ -10548,6 +10568,11 @@ msgid ""
 msgstr ""
 "Redenumire\n"
 "dosar"
+
+#. command label
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "Rename Calendar"
+msgstr ""
 
 #. command label
 #: crates/engine/src/cmd/category.rs
@@ -17961,7 +17986,7 @@ msgid "no calendar was opened by address"
 msgstr "niciun calendar nu a fost deschis după adresă"
 
 #. what a command says
-#: crates/engine/src/cmd/calendar.rs crates/engine/src/cmd/calendar/share.rs crates/engine/src/cmd/calendar_extra.rs crates/engine/src/cmd/calendar_opened.rs crates/engine/src/cmd/calendar_settings.rs crates/engine/src/cmd/file.rs crates/engine/src/import_pst.rs
+#: crates/engine/src/cmd/calendar.rs crates/engine/src/cmd/calendar/share.rs crates/engine/src/cmd/calendar_extra.rs crates/engine/src/cmd/calendar_feed.rs crates/engine/src/cmd/calendar_opened.rs crates/engine/src/cmd/calendar_settings.rs crates/engine/src/cmd/file.rs crates/engine/src/import_pst.rs
 #, fuzzy
 msgid "no calendar with id {id}"
 msgstr "nu există calendar cu ID-ul {id}"
@@ -18382,6 +18407,11 @@ msgstr "cineva@example.org sau @example.org"
 #. what a command says
 #: crates/engine/src/cmd/calendar_feed.rs
 msgid "that address is subscribed to already"
+msgstr ""
+
+#. what a command says
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "that calendar is a server's: its name and group are the server's"
 msgstr ""
 
 #. what a command says
@@ -19276,6 +19306,11 @@ msgstr "sunt prea multe calendare pentru a crea unul pentru acest fișier"
 #, fuzzy
 msgid "there are too many categories"
 msgstr "sunt prea multe categorii"
+
+#. what a command says
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "there are too many groups"
+msgstr ""
 
 #. what a command says
 #: crates/engine/src/cmd/rules.rs

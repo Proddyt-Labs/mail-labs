@@ -5208,6 +5208,11 @@ msgid "Gravatar is asked for the sender's picture and told a hash of their addre
 msgstr ""
 
 #. interface
+#: crates/ui-egui/src/calendar_view.rs
+msgid "Group"
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/merge_contacts.rs
 msgid "Group {n} of {total}"
 msgstr ""
@@ -7478,6 +7483,11 @@ msgstr ""
 msgid "Move to Folder"
 msgstr "Sposta nella cartella"
 
+#. command label
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "Move to Group"
+msgstr ""
+
 #. command label, interface
 #: crates/engine/src/cmd/mail.rs crates/ui-egui/src/ribbon.rs
 msgid "Move to Junk"
@@ -7755,6 +7765,11 @@ msgstr "Nuova categoria"
 
 #. interface
 #: crates/ui-egui/src/calendar_view.rs
+msgid "New group:"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/calendar_view.rs
 #, fuzzy
 msgid "New items go to the calendar that is picked here"
 msgstr "I nuovi elementi vanno nel calendario scelto qui"
@@ -7866,6 +7881,11 @@ msgstr ""
 #, fuzzy
 msgid "No Date"
 msgstr "Nessuna data"
+
+#. interface
+#: crates/ui-egui/src/calendar_view.rs
+msgid "No Group"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/graph_switch.rs
@@ -9973,7 +9993,7 @@ msgid "Removing MailCraft's data isn't available here"
 msgstr ""
 
 #. interface
-#: crates/ui-egui/src/signatures.rs
+#: crates/ui-egui/src/calendar_view.rs crates/ui-egui/src/signatures.rs
 #, fuzzy
 msgid "Rename"
 msgstr "Rinomina"
@@ -9987,6 +10007,11 @@ msgid ""
 msgstr ""
 "Rinomina\n"
 "cartella"
+
+#. command label
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "Rename Calendar"
+msgstr ""
 
 #. command label
 #: crates/engine/src/cmd/category.rs
@@ -16942,7 +16967,7 @@ msgid "no calendar was opened by address"
 msgstr ""
 
 #. what a command says
-#: crates/engine/src/cmd/calendar.rs crates/engine/src/cmd/calendar/share.rs crates/engine/src/cmd/calendar_extra.rs crates/engine/src/cmd/calendar_opened.rs crates/engine/src/cmd/calendar_settings.rs crates/engine/src/cmd/file.rs crates/engine/src/import_pst.rs
+#: crates/engine/src/cmd/calendar.rs crates/engine/src/cmd/calendar/share.rs crates/engine/src/cmd/calendar_extra.rs crates/engine/src/cmd/calendar_feed.rs crates/engine/src/cmd/calendar_opened.rs crates/engine/src/cmd/calendar_settings.rs crates/engine/src/cmd/file.rs crates/engine/src/import_pst.rs
 #, fuzzy
 msgid "no calendar with id {id}"
 msgstr "nessun calendario con id {id}"
@@ -17347,6 +17372,11 @@ msgstr ""
 #. what a command says
 #: crates/engine/src/cmd/calendar_feed.rs
 msgid "that address is subscribed to already"
+msgstr ""
+
+#. what a command says
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "that calendar is a server's: its name and group are the server's"
 msgstr ""
 
 #. what a command says
@@ -18201,6 +18231,11 @@ msgstr ""
 #, fuzzy
 msgid "there are too many categories"
 msgstr "ci sono troppe categorie"
+
+#. what a command says
+#: crates/engine/src/cmd/calendar_feed.rs
+msgid "there are too many groups"
+msgstr ""
 
 #. what a command says
 #: crates/engine/src/cmd/rules.rs
