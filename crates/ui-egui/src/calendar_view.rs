@@ -1402,15 +1402,25 @@ fn calendar_list(app: &mut MailApp, ui: &mut Ui, groups: Vec<ListGroup>) {
             continue;
         }
         group_heading(app, ui, &t, n, group);
-        if !group.folded {
-            for row in &group.rows {
-                calendar_row(app, ui, &t, row, row.id == current, several);
-                if only_here.contains(&row.id) {
-                    local_line(app, ui, &t, row.id);
-                }
-            }
+        if !group.folded && !group.rows.is_empty() {
+            // The calendars of a group inside another stand in as far as its heading does.
+            let indent = 16.0 * group.depth as f32;
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                ui.add_space(indent);
+                ui.vertical(|ui| {
+                    for row in &group.rows {
+                        calendar_row(app, ui, &t, row, row.id == current, several);
+                        if only_here.contains(&row.id) {
+                            local_line(app, ui, &t, row.id);
+                        }
+                    }
+                });
+            });
         }
-        ui.add_space(6.0);
+        // Groups inside another sit closer to it.
+        let next_inside = groups.get(n + 1).is_some_and(|g| g.depth > 0 && g.depth >= group.depth);
+        ui.add_space(if next_inside { 2.0 } else { 6.0 });
     }
 }
 
@@ -1581,6 +1591,48 @@ fn paint_group_icon(p: &Painter, r: Rect, label: &str, ink: Color32) -> bool {
             p.rect_filled(Rect::from_min_max(pos2(c.x - 1.4, c.y + 2.0), pos2(c.x + 1.4, c.y + 6.5)), 0.0, Color32::from_black_alpha(160));
         }
         "trabalho" | "work" => icons::paint(p, r, "work", ink, ink),
+        "seleções" | "selecoes" | "seleção" | "selecao" | "national teams" => {
+            // A shield with a star.
+            let c = r.center();
+            let shield = vec![pos2(c.x - 6.5, c.y - 7.0), pos2(c.x + 6.5, c.y - 7.0), pos2(c.x + 6.5, c.y - 1.0), pos2(c.x, c.y + 7.5), pos2(c.x - 6.5, c.y - 1.0)];
+            p.add(Shape::convex_polygon(shield, rgb(0, 82, 165), Stroke::new(0.8, rgb(254, 221, 0))));
+            let star: Vec<egui::Pos2> = (0..10)
+                .map(|k| {
+                    let a = -std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::PI / 5.0;
+                    let d = if k % 2 == 0 { 3.6 } else { 1.5 };
+                    pos2(c.x + d * a.cos(), c.y - 1.5 + d * a.sin())
+                })
+                .collect();
+            for k in 0..5 {
+                let tri = vec![pos2(c.x, c.y - 1.5), star[2 * k], star[(2 * k + 1) % 10]];
+                p.add(Shape::convex_polygon(tri, rgb(254, 221, 0), Stroke::NONE));
+                let tri = vec![pos2(c.x, c.y - 1.5), star[(2 * k + 1) % 10], star[(2 * k + 2) % 10]];
+                p.add(Shape::convex_polygon(tri, rgb(254, 221, 0), Stroke::NONE));
+            }
+        }
+        "kings league" | "kings" | "fut 7" | "futebol 7" => {
+            // A crown.
+            let c = r.center();
+            let gold = rgb(240, 190, 30);
+            let crown = vec![
+                pos2(c.x - 7.0, c.y + 4.5),
+                pos2(c.x - 7.0, c.y - 4.0),
+                pos2(c.x - 3.5, c.y),
+                pos2(c.x, c.y - 6.0),
+                pos2(c.x + 3.5, c.y),
+                pos2(c.x + 7.0, c.y - 4.0),
+                pos2(c.x + 7.0, c.y + 4.5),
+            ];
+            // Not convex: drawn as a band and three points.
+            p.rect_filled(Rect::from_min_max(pos2(c.x - 7.0, c.y), pos2(c.x + 7.0, c.y + 4.5)), 1.0, gold);
+            for w in [[crown[1], crown[2], pos2(c.x - 7.0, c.y)], [pos2(c.x - 3.5, c.y), crown[3], pos2(c.x + 3.5, c.y)], [pos2(c.x + 7.0, c.y), crown[4], crown[5]]] {
+                p.add(Shape::convex_polygon(w.to_vec(), gold, Stroke::NONE));
+            }
+            p.circle_filled(crown[3], 1.2, gold);
+            p.circle_filled(crown[1], 1.2, gold);
+            p.circle_filled(crown[5], 1.2, gold);
+            p.rect_filled(Rect::from_min_max(pos2(c.x - 7.0, c.y + 5.5), pos2(c.x + 7.0, c.y + 7.0)), 0.5, gold);
+        }
         _ => return false,
     }
     true
