@@ -226,6 +226,10 @@ mod task_sync_tests;
 #[cfg(test)]
 mod google_tasks_sync_tests;
 pub mod tasks_view;
+// Proddyt Labs fork: Tasks as a board.
+mod tasks_board;
+#[cfg(test)]
+mod tasks_board_tests;
 mod text_menu;
 #[cfg(test)]
 mod text_menu_gesture_tests;
@@ -2045,6 +2049,8 @@ impl MailApp {
         // How People and Tasks are arranged, likewise.
         v.people_sort = saved.people_sort;
         v.task_sort = saved.task_sort;
+        // Proddyt Labs fork: the Tasks board or list, likewise.
+        v.task_board = saved.task_board;
         // Gmail's categories as folders or as tabs (#911).
         v.gmail_tabs = saved.gmail_tabs;
         // One account's tasks and contacts only in the mailbox they were chosen in: in another,

@@ -60,6 +60,9 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("view.taskFilter", "Filter Tasks", "Home › Current View", task_filter)
             .reads()
             .params(r#"{"value": "active"|"today"|"overdue"|"completed"|"all"}"#),
+        CommandSpec::new("view.taskLayout", "Task Board", "View › Current View", task_layout)
+            .reads()
+            .params(r#"{"value": "list"|"board"} — Proddyt Labs fork: Tasks as its list, or as a board with a column for each status (A fazer, Em andamento, Fechada, Concluída). The filters and the account chosen hold in both. Answers {"value"}"#),
         CommandSpec::new("view.taskAccount", "Show Tasks Of", "Tasks", task_account)
             .reads()
             .params(r#"{"value": "all" | "here" | number} — every account's tasks, those kept on this computer (0 is the same), or one account's"#),
@@ -314,6 +317,16 @@ fn task_filter(s: &mut Session, v: &Value) -> CmdResult {
     s.view.task_filter =
         parse_enum::<TaskFilter>(p::req_str(v, "value")?).ok_or_else(|| bad("`value` is active, today, overdue, completed or all"))?;
     Ok(json!({"value": s.view.task_filter}))
+}
+
+/// Proddyt Labs fork: the list or the board in Tasks.
+fn task_layout(s: &mut Session, v: &Value) -> CmdResult {
+    s.view.task_board = match p::req_str(v, "value")?.trim() {
+        "list" => false,
+        "board" => true,
+        _ => return Err(bad("`value` is list or board")),
+    };
+    Ok(json!({"value": if s.view.task_board { "board" } else { "list" }}))
 }
 
 fn task_account(s: &mut Session, v: &Value) -> CmdResult {

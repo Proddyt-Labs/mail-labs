@@ -37,6 +37,9 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("tasks.categorize", "Categorize", "Home › Tags", categorize)
             .params(r#"{"category": string, "value"?: bool, "id"?: number}"#)
             .selection(needs_task),
+        CommandSpec::new("tasks.setStatus", "Set Task Status", "Tasks › Board", set_status)
+            .params(r#"{"status": "toDo"|"inProgress"|"closed"|"done", "id"?: number (default: the selected task)} — Proddyt Labs fork: moves the task to that column of the board. toDo, inProgress and closed put the category A fazer, Em andamento or Fechada in place of the one it had of those (its other categories stay) and reopen a completed task; done marks it complete and leaves its categories as they are. The change goes to the account's server as any edit does. Answers {"id", "status", "complete", "categories"}"#)
+            .selection(needs_task),
         CommandSpec::new("tasks.fromMessage", "Add to Tasks", "Home › Tags", from_message)
             .params(r#"{"id"?: number, "due"?: "YYYY-MM-DD"} (a message; default: the selected one) — the task goes to the message's account when it keeps to-dos, else where a new task goes; a message with a task already shows that one. The list moves to show it"#)
             .selection(needs_message),
@@ -315,6 +318,90 @@ fn list(s: &mut Session, v: &Value) -> CmdResult {
     }
     let items: Vec<Value> = sorted_of(s, filter, account).into_iter().filter_map(|id| s.mailbox.task(id)).map(|t| task_json(s, t)).collect();
     Ok(json!({"filter": filter, "account": account.code(), "tasks": items}))
+}
+
+/// Proddyt Labs fork: a column of the Tasks board. An open task is in the column of its first
+/// status category ([`mailcraft_model::STATUS_CATEGORIES`]), else in To do; a completed one in
+/// Done, whatever its categories say.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum BoardColumn {
+    ToDo,
+    InProgress,
+    Closed,
+    Done,
+}
+
+impl BoardColumn {
+    pub const ALL: [BoardColumn; 4] = [BoardColumn::ToDo, BoardColumn::InProgress, BoardColumn::Closed, BoardColumn::Done];
+
+    /// The column a task stands in.
+    pub fn of(task: &Task) -> BoardColumn {
+        if task.is_complete() {
+            return BoardColumn::Done;
+        }
+        let status = task.categories.iter().find(|c| mailcraft_model::is_status_category(c));
+        match status.map(|c| c.trim().to_lowercase()) {
+            Some(c) if c == mailcraft_model::STATUS_IN_PROGRESS.to_lowercase() => BoardColumn::InProgress,
+            Some(c) if c == mailcraft_model::STATUS_CLOSED.to_lowercase() => BoardColumn::Closed,
+            _ => BoardColumn::ToDo,
+        }
+    }
+
+    /// What `tasks.setStatus` calls it.
+    pub fn code(self) -> &'static str {
+        match self {
+            BoardColumn::ToDo => "toDo",
+            BoardColumn::InProgress => "inProgress",
+            BoardColumn::Closed => "closed",
+            BoardColumn::Done => "done",
+        }
+    }
+
+    pub fn parse(code: &str) -> Option<BoardColumn> {
+        BoardColumn::ALL.into_iter().find(|c| c.code().eq_ignore_ascii_case(code.trim()))
+    }
+
+    /// The status category it stands for; none for Done.
+    pub fn category(self) -> Option<&'static str> {
+        match self {
+            BoardColumn::ToDo => Some(mailcraft_model::STATUS_TO_DO),
+            BoardColumn::InProgress => Some(mailcraft_model::STATUS_IN_PROGRESS),
+            BoardColumn::Closed => Some(mailcraft_model::STATUS_CLOSED),
+            BoardColumn::Done => None,
+        }
+    }
+}
+
+/// `tasks.setStatus`: the task to another column of the board, through the same fields an edit
+/// changes, so that the account's server is told as for any other change.
+fn set_status(s: &mut Session, v: &Value) -> CmdResult {
+    let id = target(s, v)?;
+    let column = BoardColumn::parse(p::req_str(v, "status")?).ok_or_else(|| bad("`status` is toDo, inProgress, closed or done"))?;
+    let now = s.now();
+    let account = s.mailbox.task(id).map(|t| t.origin.account).ok_or_else(|| fail("the task is gone"))?;
+    // The status category takes the spelling of its account's list; a new name joins it.
+    let spelling = match column.category() {
+        Some(name) => Some(super::category::spelled(s, account, name, true)?),
+        None => None,
+    };
+    let t = s.mailbox.task_mut(id)?;
+    if let Some(spelling) = spelling {
+        t.categories.retain(|c| !mailcraft_model::is_status_category(c));
+        t.categories.insert(0, spelling);
+        t.completed = None;
+    } else {
+        t.completed = Some(t.completed.unwrap_or(now));
+    }
+    // Changed again: a change the server refused is tried again (one kept here stays so).
+    t.local_only = t.kept_here;
+    let (done, categories, message) = (t.is_complete(), t.categories.clone(), t.message);
+    // A to-do made from a flagged message keeps that flag in step, as `tasks.complete` does.
+    if let Some(m) = message
+        && let Ok(m) = s.mailbox.message_mut(m)
+    {
+        m.flag = if done { mailcraft_model::FlagStatus::Complete } else { mailcraft_model::FlagStatus::Flagged };
+    }
+    Ok(json!({"id": id, "status": column.code(), "complete": done, "categories": categories}))
 }
 
 fn categorize(s: &mut Session, v: &Value) -> CmdResult {

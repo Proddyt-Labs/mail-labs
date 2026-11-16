@@ -89,7 +89,7 @@ pub fn object(id: &str) -> Option<Object> {
         "folder.empty" | "folder.delete" => FolderContent,
         "rules.run" | "file.import" | "calendar.deleteAnsweredRequests" => Folder,
         "people.delete" | "people.merge" => Contact,
-        "tasks.delete" | "tasks.edit" | "tasks.complete" | "tasks.categorize" | "tasks.new" | "tasks.fromMessage" => Task,
+        "tasks.delete" | "tasks.edit" | "tasks.complete" | "tasks.categorize" | "tasks.setStatus" | "tasks.new" | "tasks.fromMessage" => Task,
         // A calendar command that writes to people is asked about whatever it is (`classify`).
         "calendar.forward" | "calendar.propose" | "calendar.delete" | "people.meeting" | "ui.joinMeeting" => Event,
         _ if id.starts_with("calendar.") && !CALENDARS.contains(&id) => Event,

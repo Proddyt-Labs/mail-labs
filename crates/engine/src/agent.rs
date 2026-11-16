@@ -273,6 +273,8 @@ const SAFE: &[&str] = &[
     "view.previous",
     "view.goToDate",
     "view.taskFilter",
+    // Proddyt Labs fork: the Tasks board.
+    "view.taskLayout",
     "view.taskAccount",
     "view.peopleAccount",
     "view.reset",
@@ -371,6 +373,8 @@ const SAFE: &[&str] = &[
     "journal.get",
     "tasks.arrange",
     "tasks.categorize",
+    // Proddyt Labs fork: a task to another column of the board.
+    "tasks.setStatus",
     "tasks.fromMessage",
     "category.set",
     "category.rename",
@@ -862,7 +866,7 @@ fn new_task_onto(s: &Session, id: &str, params: &Value) -> Option<Id> {
 /// found as the command finds it (`id`, else the selected one); one that isn't there is left to
 /// the command, which changes nothing and says so.
 fn shared_task<'a>(s: &'a Session, id: &str, params: &Value) -> Option<&'a mailcraft_model::Task> {
-    if !matches!(id, "tasks.edit" | "tasks.complete" | "tasks.categorize" | "tasks.delete") {
+    if !matches!(id, "tasks.edit" | "tasks.complete" | "tasks.categorize" | "tasks.setStatus" | "tasks.delete") {
         return None;
     }
     p::id_strict(params, "id").ok().and_then(|t| t.or(s.sel.task)).and_then(|t| s.mailbox.task(t)).filter(|t| s.mailbox.in_shared_task_list(t))
@@ -1459,7 +1463,7 @@ fn what_it_does(s: &Session, id: &str, params: &Value) -> String {
             let shared = if shared_task(s, id, params).is_some() { SHARED_TASK } else { "" };
             format!("permanently delete the task {}{shared}", t.map(|t| quoted(&t.title)).unwrap_or_else(|| "(none selected)".to_string()))
         }
-        "tasks.edit" | "tasks.complete" | "tasks.categorize" if shared_task(s, id, params).is_some() => {
+        "tasks.edit" | "tasks.complete" | "tasks.categorize" | "tasks.setStatus" if shared_task(s, id, params).is_some() => {
             let t = shared_task(s, id, params).map(|t| quoted(&t.title)).unwrap_or_default();
             format!("{} on the task {t}{SHARED_TASK}", run_text(label, id, params))
         }

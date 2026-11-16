@@ -320,6 +320,9 @@ pub struct ViewState {
     pub task_sort: TaskSort,
     /// Whose tasks Tasks shows.
     pub task_account: AccountChoice,
+    /// Proddyt Labs fork: Tasks shows its board (a column for each status) rather than its list
+    /// (`view.taskLayout`).
+    pub task_board: bool,
     /// Whose contacts People shows.
     pub people_account: AccountChoice,
 }
@@ -352,6 +355,7 @@ impl Default for ViewState {
             task_sort: TaskSort::DueDate,
             task_account: AccountChoice::All,
             people_account: AccountChoice::All,
+            task_board: false,
         }
     }
 }

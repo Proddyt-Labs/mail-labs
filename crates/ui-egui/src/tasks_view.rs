@@ -53,7 +53,15 @@ pub fn show(app: &mut MailApp, ui: &mut Ui) {
             .frame(frame)
             .show(ui, |ui| details(app, ui, &task));
     }
-    egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.surface)).show(ui, |ui| list(app, ui, &lists));
+    // Proddyt Labs fork: the board in the list's place, when the owner chose it (`view.taskLayout`).
+    let board = app.session.view.task_board;
+    egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.surface)).show(ui, |ui| {
+        if board {
+            crate::tasks_board::show(app, ui);
+        } else {
+            list(app, ui, &lists);
+        }
+    });
 }
 
 // ---- grouping ----
@@ -114,7 +122,7 @@ fn due_choices(today: Date) -> [(&'static str, Option<Date>); 5] {
 }
 
 /// When a task is due, as a row says it; empty without a due date.
-fn due_text(task: &Task, today: Date) -> String {
+pub(crate) fn due_text(task: &Task, today: Date) -> String {
     if task.due.is_none() {
         return String::new();
     }
@@ -370,7 +378,7 @@ fn list(app: &mut MailApp, ui: &mut Ui, lists: &Lists) {
 }
 
 /// The field above the list: type a title, press Enter, and the task exists.
-fn quick_add(app: &mut MailApp, ui: &mut Ui) {
+pub(crate) fn quick_add(app: &mut MailApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     let filter = app.session.view.task_filter;
     let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), ADD_H), Sense::hover());

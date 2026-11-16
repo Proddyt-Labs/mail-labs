@@ -88,7 +88,10 @@ pub use remote::{AccountChoice, Origin};
 pub use rich::{RichBody, RichText};
 pub use rule::{Action, Condition, Keep, MAX_RULE_GONE, Rule, RuleGone, ServerRule};
 pub use signature::Signature;
-pub use task::{LocalTasks, MAX_TASK_GONE, SharedTaskList, SharedTaskLists, Task, TaskFields, TaskGone, TaskPatch};
+pub use task::{
+    LocalTasks, MAX_TASK_GONE, STATUS_CATEGORIES, STATUS_CLOSED, STATUS_IN_PROGRESS, STATUS_TO_DO, SharedTaskList, SharedTaskLists, Task, TaskFields,
+    TaskGone, TaskPatch, is_status_category,
+};
 pub use thread_index::{ThreadIndex, ThreadKey};
 
 /// An item's identity inside one mailbox. 0 means "not assigned yet".

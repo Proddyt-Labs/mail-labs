@@ -69,11 +69,11 @@ const MAX_TAGS: usize = 25;
 const MAX_TAG: usize = mailcraft_model::MAX_NAME;
 
 /// The category a title that starts with `▶ ` has: under way.
-pub const IN_PROGRESS: &str = "Em andamento";
+pub const IN_PROGRESS: &str = mailcraft_model::STATUS_IN_PROGRESS;
 /// The category a title that starts with `? ` has: still to do.
-pub const TO_DO: &str = "A fazer";
+pub const TO_DO: &str = mailcraft_model::STATUS_TO_DO;
 /// The category a title that starts with `✗ ` has: closed.
-pub const CLOSED: &str = "Fechada";
+pub const CLOSED: &str = mailcraft_model::STATUS_CLOSED;
 /// Each marker at the start of a title and the category it stands for.
 const MARKERS: [(&str, &str); 3] = [("▶ ", IN_PROGRESS), ("? ", TO_DO), ("✗ ", CLOSED)];
 /// The first line of a subtask's notes starts with this, then its parent's title.

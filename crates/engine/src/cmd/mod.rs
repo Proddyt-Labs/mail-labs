@@ -151,6 +151,9 @@ mod google_tasks_tests;
 mod tasks_remote_tests;
 #[cfg(test)]
 mod tasks_tests;
+// Proddyt Labs fork: the Tasks board.
+#[cfg(test)]
+mod tasks_board_tests;
 mod thread_ids;
 pub mod view;
 #[cfg(test)]

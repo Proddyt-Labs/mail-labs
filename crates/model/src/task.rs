@@ -249,6 +249,20 @@ impl LocalTasks {
     }
 }
 
+/// Proddyt Labs fork: the categories that say how far a to-do has come, which the Tasks board
+/// lays out as its columns and Google Tasks writes as `? `, `▶ ` and `✗ ` at the start of a title:
+/// still to do, under way, closed. A to-do has at most one of them that counts (the first).
+pub const STATUS_TO_DO: &str = "A fazer";
+pub const STATUS_IN_PROGRESS: &str = "Em andamento";
+pub const STATUS_CLOSED: &str = "Fechada";
+/// The three, in the board's order.
+pub const STATUS_CATEGORIES: [&str; 3] = [STATUS_TO_DO, STATUS_IN_PROGRESS, STATUS_CLOSED];
+
+/// Whether a category is one of [`STATUS_CATEGORIES`], whatever its case.
+pub fn is_status_category(name: &str) -> bool {
+    STATUS_CATEGORIES.iter().any(|status| status.eq_ignore_ascii_case(name.trim()))
+}
+
 /// Most deletions that wait for a server at once; the rest are forgotten.
 pub const MAX_TASK_GONE: usize = 5_000;
 

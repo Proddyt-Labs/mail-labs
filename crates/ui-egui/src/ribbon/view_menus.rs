@@ -19,6 +19,12 @@ const SHOWN_CHARS: usize = 60;
 
 pub(super) fn show(ui: &mut Ui, app: &mut MailApp, menu: Menu) {
     match menu {
+        // Proddyt Labs fork: in Tasks, its list or its board.
+        Menu::ChangeView if app.session.view.module == mailcraft_engine::Module::Tasks => {
+            let board = app.session.view.task_board;
+            mi_check(ui, app, "List", !board, "view.taskLayout", json!({"value": "list"}));
+            mi_check(ui, app, "Board", board, "view.taskLayout", json!({"value": "board"}));
+        }
         Menu::ChangeView => {
             let now = ListView::of(&app.session);
             for v in ListView::ALL {

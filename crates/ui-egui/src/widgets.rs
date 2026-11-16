@@ -310,11 +310,16 @@ pub fn avatar(ui: &Ui, center: egui::Pos2, radius: f32, address: &mailcraft_mode
 /// A category as a small coloured chip with its name. Returns the width used.
 pub fn category_chip(ui: &Ui, left_center: egui::Pos2, name: &str, color: Color32) -> f32 {
     let t = Tokens::get(ui.ctx());
-    let w = text_w(ui, name, 10.5) + 12.0;
+    category_chip_on(ui.painter(), left_center, name, color, &t)
+}
+
+/// [`category_chip`] on any painter (a card dragged above the window has one of its own).
+pub fn category_chip_on(p: &egui::Painter, left_center: egui::Pos2, name: &str, color: Color32, t: &Tokens) -> f32 {
+    let w = p.layout_no_wrap(name.to_string(), regular(10.5), Color32::WHITE).size().x + 12.0;
     let r = Rect::from_min_size(pos2(left_center.x, left_center.y - 8.0), vec2(w, 16.0));
-    ui.painter().rect_filled(r, 8.0, t.data_fill(color));
-    ui.painter().rect_stroke(r, 8.0, Stroke::new(1.0, t.data_edge(color)), egui::StrokeKind::Inside);
-    ui.painter().text(r.center(), Align2::CENTER_CENTER, name, regular(10.5), t.text);
+    p.rect_filled(r, 8.0, t.data_fill(color));
+    p.rect_stroke(r, 8.0, Stroke::new(1.0, t.data_edge(color)), egui::StrokeKind::Inside);
+    p.text(r.center(), Align2::CENTER_CENTER, name, regular(10.5), t.text);
     w
 }
 

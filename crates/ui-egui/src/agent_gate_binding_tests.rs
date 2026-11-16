@@ -248,6 +248,7 @@ const ROWS: &[(&str, &str, Setup)] = &[
     ("tasks.edit", r#"{"title": "x"}"#, Setup::Shared),
     ("tasks.complete", "{}", Setup::Shared),
     ("tasks.categorize", r#"{"category": "Red category"}"#, Setup::Shared),
+    ("tasks.setStatus", r#"{"status": "inProgress"}"#, Setup::Shared),
     ("tasks.new", r#"{"title": "x", "account": $account}"#, Setup::Shared),
     ("tasks.fromMessage", "{}", Setup::Shared),
     ("category.rename", r#"{"from": "Shared", "to": "y"}"#, Setup::Shared),
