@@ -123,7 +123,7 @@ msgid "'{subject}' stays where it was moved: it is Digitally signed or Encrypted
 msgstr "„{subject}” rămâne unde a fost mutat: este semnat digital sau criptat, iar copia lui din cutia poștală de unde a venit a fost eliminată, în timp ce copia din care a fost mutat întâi păstrează octeții cu care a sosit. Mutați-l înapoi ca să ajungă din nou acolo."
 
 #. interface
-#: crates/ui-egui/src/calendar_view.rs
+#: crates/ui-egui/src/calendar_view.rs crates/ui-egui/src/tasks_board.rs
 #, fuzzy
 msgid "(No title)"
 msgstr "(Fără titlu)"
@@ -2063,6 +2063,11 @@ msgstr "Blocare expeditor"
 #, fuzzy
 msgid "Blue"
 msgstr "Albastru"
+
+#. interface, ribbon location
+#: crates/engine/src/cmd/tasks.rs crates/ui-egui/src/ribbon/view_menus.rs
+msgid "Board"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/advanced_search.rs
@@ -4135,6 +4140,11 @@ msgstr "Ciornele netrimise ajung în Ciorne pe server. Dosarele și mesajele car
 #, fuzzy
 msgid "Drop Cap"
 msgstr "Letrină"
+
+#. interface
+#: crates/ui-egui/src/tasks_board.rs
+msgid "Drop a task here"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/tasks_view.rs
@@ -6862,6 +6872,11 @@ msgstr ""
 #, fuzzy
 msgid "Links"
 msgstr "Linkuri"
+
+#. interface
+#: crates/ui-egui/src/ribbon/view_menus.rs
+msgid "List"
+msgstr ""
 
 #. command label
 #: crates/engine/src/cmd/account.rs
@@ -12023,6 +12038,11 @@ msgstr "Setări server"
 msgid "Server: {address}"
 msgstr "Server: {address}"
 
+#. command label
+#: crates/engine/src/cmd/tasks.rs
+msgid "Set Task Status"
+msgstr ""
+
 #. name
 #: crates/ui-egui/src/forms.rs
 #, fuzzy
@@ -13150,6 +13170,11 @@ msgstr "Scoateți această cheie de pe card"
 #, fuzzy
 msgid "Task"
 msgstr "Sarcină"
+
+#. command label
+#: crates/engine/src/cmd/view.rs
+msgid "Task Board"
+msgstr ""
 
 #. what a command says
 #: crates/engine/src/cmd/tasks/status.rs
@@ -20916,6 +20941,14 @@ msgid_plural "{n} minutes"
 msgstr[0] "{n} minut"
 msgstr[1] "{n} minute"
 msgstr[2] "{n} de minute"
+
+#. interface
+#: crates/ui-egui/src/tasks_board.rs
+msgid "{n} more completed task"
+msgid_plural "{n} more completed tasks"
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
 
 #. interface
 #: crates/ui-egui/src/folder_properties.rs

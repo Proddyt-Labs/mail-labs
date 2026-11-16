@@ -123,7 +123,7 @@ msgid "'{subject}' stays where it was moved: it is Digitally signed or Encrypted
 msgstr "'{subject}' blijft waar die is verplaatst: die is digitaal ondertekend of versleurd, en de kopie in het postvak waarvandaan die kwam, is verwijderd, terwijl de kopie waaruit die eerst werd verplaatst de bytes behoudt zoals die aankw. Verplaats die terug om die daar weer te zetten."
 
 #. interface
-#: crates/ui-egui/src/calendar_view.rs
+#: crates/ui-egui/src/calendar_view.rs crates/ui-egui/src/tasks_board.rs
 #, fuzzy
 msgid "(No title)"
 msgstr "(Geen titel)"
@@ -2046,6 +2046,11 @@ msgstr "Afzender blokkeren"
 #, fuzzy
 msgid "Blue"
 msgstr "Blauw"
+
+#. interface, ribbon location
+#: crates/engine/src/cmd/tasks.rs crates/ui-egui/src/ribbon/view_menus.rs
+msgid "Board"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/advanced_search.rs
@@ -4105,6 +4110,11 @@ msgstr "Concepten die u nog niet hebt verzonden, gaan naar uw Concepten op de se
 #, fuzzy
 msgid "Drop Cap"
 msgstr "Initiaal"
+
+#. interface
+#: crates/ui-egui/src/tasks_board.rs
+msgid "Drop a task here"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/tasks_view.rs
@@ -6787,6 +6797,11 @@ msgstr ""
 #, fuzzy
 msgid "Links"
 msgstr "Koppelingen"
+
+#. interface
+#: crates/ui-egui/src/ribbon/view_menus.rs
+msgid "List"
+msgstr ""
 
 #. command label
 #: crates/engine/src/cmd/account.rs
@@ -11895,6 +11910,11 @@ msgstr "Serverinstellingen"
 msgid "Server: {address}"
 msgstr "Server: {address}"
 
+#. command label
+#: crates/engine/src/cmd/tasks.rs
+msgid "Set Task Status"
+msgstr ""
+
 #. name
 #: crates/ui-egui/src/forms.rs
 #, fuzzy
@@ -13017,6 +13037,11 @@ msgstr ""
 #, fuzzy
 msgid "Task"
 msgstr "Taak"
+
+#. command label
+#: crates/engine/src/cmd/view.rs
+msgid "Task Board"
+msgstr ""
 
 #. what a command says
 #: crates/engine/src/cmd/tasks/status.rs
@@ -20621,6 +20646,13 @@ msgid "{n} minute"
 msgid_plural "{n} minutes"
 msgstr[0] "{n} minuut"
 msgstr[1] "{n} minuten"
+
+#. interface
+#: crates/ui-egui/src/tasks_board.rs
+msgid "{n} more completed task"
+msgid_plural "{n} more completed tasks"
+msgstr[0] ""
+msgstr[1] ""
 
 #. interface
 #: crates/ui-egui/src/folder_properties.rs

@@ -121,7 +121,7 @@ msgid "'{subject}' stays where it was moved: it is Digitally signed or Encrypted
 msgstr ""
 
 #. interface
-#: crates/ui-egui/src/calendar_view.rs
+#: crates/ui-egui/src/calendar_view.rs crates/ui-egui/src/tasks_board.rs
 #, fuzzy
 msgid "(No title)"
 msgstr "(Senza titolo)"
@@ -1950,6 +1950,11 @@ msgstr "Blocca mittente"
 #. interface, name
 #: crates/ui-egui/src/backstage.rs crates/ui-egui/src/theme/accent.rs
 msgid "Blue"
+msgstr ""
+
+#. interface, ribbon location
+#: crates/engine/src/cmd/tasks.rs crates/ui-egui/src/ribbon/view_menus.rs
+msgid "Board"
 msgstr ""
 
 #. interface
@@ -3927,6 +3932,11 @@ msgstr "Le bozze non inviate vanno nella cartella Bozze sul server. Le cartelle 
 #. ribbon
 #: crates/ui-egui/src/ribbon.rs
 msgid "Drop Cap"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/tasks_board.rs
+msgid "Drop a task here"
 msgstr ""
 
 #. interface
@@ -6485,6 +6495,11 @@ msgstr ""
 #. ribbon
 #: crates/ui-egui/src/ribbon.rs
 msgid "Links"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/ribbon/view_menus.rs
+msgid "List"
 msgstr ""
 
 #. command label
@@ -11396,6 +11411,11 @@ msgstr "Impostazioni server"
 msgid "Server: {address}"
 msgstr "Server: {address}"
 
+#. command label
+#: crates/engine/src/cmd/tasks.rs
+msgid "Set Task Status"
+msgstr ""
+
 #. name
 #: crates/ui-egui/src/forms.rs
 #, fuzzy
@@ -12465,6 +12485,11 @@ msgstr ""
 #, fuzzy
 msgid "Task"
 msgstr "Attività"
+
+#. command label
+#: crates/engine/src/cmd/view.rs
+msgid "Task Board"
+msgstr ""
 
 #. what a command says
 #: crates/engine/src/cmd/tasks/status.rs
@@ -19718,6 +19743,13 @@ msgid "{n} minute"
 msgid_plural "{n} minutes"
 msgstr[0] "{n} minuto"
 msgstr[1] "{n} minuti"
+
+#. interface
+#: crates/ui-egui/src/tasks_board.rs
+msgid "{n} more completed task"
+msgid_plural "{n} more completed tasks"
+msgstr[0] ""
+msgstr[1] ""
 
 #. interface
 #: crates/ui-egui/src/folder_properties.rs
