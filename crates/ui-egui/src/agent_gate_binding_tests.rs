@@ -163,6 +163,11 @@ const ROWS: &[(&str, &str, Setup)] = &[
     // Proddyt Labs fork: Google Tasks.
     ("ui.connectGoogleTasks", r#"{"account": $account, "confirmed": true}"#, Setup::None),
     ("tasks.linkGoogle", r#"{"account": $account, "linked": false}"#, Setup::None),
+    // Proddyt Labs fork: Google Keep (the sign-in is typed in the window; nothing here takes one).
+    ("ui.connectGoogleKeep", r#"{"account": $account}"#, Setup::None),
+    ("ui.disconnectGoogleKeep", r#"{"account": $account}"#, Setup::None),
+    ("keep.link", r#"{"account": $account, "linked": false}"#, Setup::None),
+    ("notes.deleteForever", r#"{"id": 1}"#, Setup::None),
     ("ui.allowRules", r#"{"account": $account, "confirmed": true}"#, Setup::None),
     ("ui.allowAutomaticReplies", r#"{"account": $account, "confirmed": true}"#, Setup::None),
     ("ui.adminConsent", "{}", Setup::None),

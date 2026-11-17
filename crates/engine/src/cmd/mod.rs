@@ -80,6 +80,7 @@ pub mod jmap_up;
 pub mod junk;
 #[cfg(test)]
 mod junk_tests;
+pub mod keep;
 #[cfg(test)]
 mod keyboard_selection_tests;
 pub mod keys;
@@ -147,6 +148,9 @@ pub mod tasks_remote;
 // Proddyt Labs fork: Google Tasks.
 #[cfg(test)]
 mod google_tasks_tests;
+// Proddyt Labs fork: Google Keep.
+#[cfg(test)]
+mod keep_tests;
 #[cfg(test)]
 mod tasks_remote_tests;
 #[cfg(test)]
@@ -218,6 +222,7 @@ pub fn registry() -> Registry {
     v.extend(graph_send::specs());
     v.extend(remote::specs());
     v.extend(tasks_remote::specs());
+    v.extend(keep::specs());
     v.extend(sync_progress::specs());
     v.extend(search_server::specs());
     Registry::new(v)

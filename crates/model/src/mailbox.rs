@@ -453,9 +453,20 @@ pub struct Account {
     /// one.
     #[serde(skip_serializing_if = "is_false", deserialize_with = "crate::sync::lenient_or_default")]
     pub google_tasks: bool,
+    /// Proddyt Labs fork: the owner connected this account's Google account to Google Keep
+    /// (`keep.link`, after the window took the sign-in). The sign-in itself (a master token) is
+    /// in the system's credential store and never here. Off for every other account.
+    #[serde(skip_serializing_if = "is_false", deserialize_with = "crate::sync::lenient_or_default")]
+    pub google_keep: bool,
 }
 
 impl Account {
+    /// Proddyt Labs fork: whether Google Keep keeps notes for it: the owner connected it and it is
+    /// not a shared mailbox.
+    pub fn keeps_google_keep(&self) -> bool {
+        self.google_keep && !self.is_shared()
+    }
+
     /// The name the folder pane gives an account the owner hasn't named (#1017): its address, or
     /// `Mailbox` for one without an address.
     pub fn name_by_default(&self) -> String {
@@ -1151,6 +1162,10 @@ pub struct Mailbox {
     pub notes: BTreeMap<Id, Arc<crate::Note>>,
     #[serde(deserialize_with = "crate::load_limit::capped_map")]
     pub journal: BTreeMap<Id, Arc<crate::JournalEntry>>,
+    /// Proddyt Labs fork: what is kept of each account's Google Keep besides its notes: its labels
+    /// and the version the notes were read at. Never a sign-in.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", deserialize_with = "crate::load_limit::capped_map")]
+    pub keep: BTreeMap<Id, crate::KeepState>,
     #[serde(deserialize_with = "crate::load_limit::capped_vec")]
     pub categories: Vec<Category>,
     pub rules: Vec<Rule>,
@@ -1272,6 +1287,7 @@ impl Default for Mailbox {
             pending: Vec::new(),
             event_changes: Vec::new(),
             task_gone: Vec::new(),
+            keep: BTreeMap::new(),
             rule_gone: Vec::new(),
             shared_task_lists: BTreeMap::new(),
             local_tasks: crate::LocalTasks::Unasked,
@@ -1467,6 +1483,13 @@ impl Mailbox {
         self.event_changes.retain(|change| !going.contains(&change.account));
         self.event_checks.retain(|check| !going.contains(&check.account));
         self.task_gone.retain(|gone| !going.contains(&gone.account));
+        // Proddyt Labs fork: its Google Keep notes stay, as notes of this computer only.
+        self.keep.retain(|account, _| !going.contains(account));
+        for note in self.notes.values_mut() {
+            if note.keep.as_ref().is_some_and(|k| going.contains(&k.account)) {
+                Arc::make_mut(note).keep = None;
+            }
+        }
         self.rule_gone.retain(|gone| !going.contains(&gone.account));
         // Its rules go with it, as Outlook keeps an account's rules in its mailbox (#566): one
         // left behind would act on the mail of accounts it was never made for. Those for every

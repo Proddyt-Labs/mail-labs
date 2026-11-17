@@ -153,7 +153,7 @@ msgid "(no subject)"
 msgstr "(fără subiect)"
 
 #. interface
-#: crates/ui-egui/src/alerts.rs crates/ui-egui/src/reading/invitation.rs crates/ui-egui/src/reminders.rs crates/ui-egui/src/tasks_view.rs
+#: crates/ui-egui/src/alerts.rs crates/ui-egui/src/notes_view.rs crates/ui-egui/src/reading/invitation.rs crates/ui-egui/src/reminders.rs crates/ui-egui/src/tasks_view.rs
 #, fuzzy
 msgid "(no title)"
 msgstr "(fără titlu)"
@@ -889,6 +889,11 @@ msgstr ""
 msgid "Add from file…"
 msgstr "Adăugare din fișier…"
 
+#. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "Add item"
+msgstr ""
+
 #. ribbon
 #: crates/ui-egui/src/ribbon.rs
 #, fuzzy
@@ -1415,6 +1420,11 @@ msgid "Apply Downloaded Messages"
 msgstr "Aplicare mesaje descărcate"
 
 #. command label
+#: crates/engine/src/cmd/keep.rs
+msgid "Apply Downloaded Notes"
+msgstr ""
+
+#. command label
 #: crates/engine/src/cmd/rules_remote.rs
 #, fuzzy
 msgid "Apply Downloaded Rules"
@@ -1522,10 +1532,15 @@ msgid "April"
 msgstr "aprilie"
 
 #. command label, interface, name, ribbon
-#: crates/engine/src/cmd/mail.rs crates/model/src/mailbox.rs crates/ui-egui/src/mail_view.rs crates/ui-egui/src/ribbon.rs
+#: crates/engine/src/cmd/mail.rs crates/model/src/mailbox.rs crates/ui-egui/src/mail_view.rs crates/ui-egui/src/notes_view.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid "Archive"
 msgstr "Arhivă"
+
+#. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "Archived"
+msgstr ""
 
 #. name
 #: crates/model/src/rich.rs
@@ -2664,6 +2679,11 @@ msgid "Choose a folder"
 msgstr "Alegeți un dosar"
 
 #. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "Choose a note, or make a new one."
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/signatures.rs
 #, fuzzy
 msgid "Choose default signatures"
@@ -2934,7 +2954,7 @@ msgid "Confirm servers"
 msgstr "Confirmați serverele"
 
 #. interface
-#: crates/ui-egui/src/account_setup.rs crates/ui-egui/src/account_setup/exchange.rs crates/ui-egui/src/calendar_view.rs
+#: crates/ui-egui/src/account_setup.rs crates/ui-egui/src/account_setup/exchange.rs crates/ui-egui/src/calendar_view.rs crates/ui-egui/src/dialogs.rs
 #, fuzzy
 msgid "Connect"
 msgstr "Conectare"
@@ -2944,6 +2964,11 @@ msgstr "Conectare"
 #, fuzzy
 msgid "Connect Calendar and Contacts"
 msgstr "Conectare calendar și contacte"
+
+#. command label, interface
+#: crates/ui-egui/src/dialogs.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/notes_view.rs
+msgid "Connect Google Keep"
+msgstr ""
 
 #. command label, interface
 #: crates/ui-egui/src/backstage.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/task_sync.rs
@@ -2983,6 +3008,11 @@ msgstr "Conectare la Microsoft (e-mail, calendar și contacte)"
 #, fuzzy
 msgid "Connect to show your category colours and working hours"
 msgstr "Conectați-vă ca să vedeți culorile categoriilor și programul de lucru"
+
+#. interface
+#: crates/ui-egui/src/dialogs.rs
+msgid "Connecting to Google Keep…"
+msgstr ""
 
 #. what a command says
 #: crates/model/src/sync/progress.rs
@@ -3600,6 +3630,11 @@ msgstr "Ștergere invitații la întâlnire după răspuns"
 msgid "Delete My Copy"
 msgstr "Ștergere copia mea"
 
+#. command label
+#: crates/engine/src/cmd/notes.rs
+msgid "Delete Note for Good"
+msgstr ""
+
 #. command label, interface, ribbon
 #: crates/engine/src/cmd/mail.rs crates/ui-egui/src/dialogs.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
@@ -3643,6 +3678,11 @@ msgid "Delete Your Copy of This Meeting?"
 msgstr "Ștergeți copia dvs. a acestei întâlniri?"
 
 #. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "Delete for good"
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/reading/invitation.rs
 #, fuzzy
 msgid "Delete meeting requests from the Inbox after responding"
@@ -3665,6 +3705,11 @@ msgstr "Ștergeți această categorie"
 #, fuzzy
 msgid "Delete this key from this computer"
 msgstr "Ștergeți această cheie de pe acest computer"
+
+#. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "Delete this note for good, in Google Keep too?"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/forms.rs
@@ -3825,6 +3870,11 @@ msgstr "Renunțare"
 #. interface
 #: crates/ui-egui/src/backstage.rs
 msgid "Disconnect"
+msgstr ""
+
+#. command label, interface
+#: crates/ui-egui/src/lib.rs crates/ui-egui/src/notes_view.rs
+msgid "Disconnect Google Keep"
 msgstr ""
 
 #. interface
@@ -4261,6 +4311,11 @@ msgstr "Editare eveniment"
 #, fuzzy
 msgid "Edit Message"
 msgstr "Editare mesaj"
+
+#. command label
+#: crates/engine/src/cmd/notes.rs
+msgid "Edit Note"
+msgstr ""
 
 #. command label
 #: crates/engine/src/cmd/signature.rs
@@ -5425,6 +5480,36 @@ msgstr "ID aplicație desktop Google"
 msgid "Google Desktop application ID"
 msgstr "ID aplicație desktop Google"
 
+#. interface
+#: crates/ui-egui/src/keep_sync.rs
+msgid "Google Keep can't be connected now"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/keep_sync.rs
+msgid "Google Keep can't be connected while MailCraft is working offline"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/keep_sync.rs
+msgid "Google Keep connected: your notes are kept in step with it"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/keep_sync.rs
+msgid "Google Keep disconnected"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/keep_sync.rs
+msgid "Google Keep wasn't connected: the job stopped unexpectedly"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/keep_sync.rs
+msgid "Google Keep wasn't connected: {error}"
+msgstr ""
+
 #. why a mail server couldn't be used
 #: crates/net/src/lib.rs
 #, fuzzy
@@ -5490,6 +5575,11 @@ msgstr "Google nu a acceptat parola. Un cont cu verificare în doi pași are nev
 #. interface
 #: crates/ui-egui/src/task_sync.rs
 msgid "Google didn't give MailCraft a lasting permission for Google Tasks: connect again"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/keep_sync.rs
+msgid "Google didn't give a Keep sign-in"
 msgstr ""
 
 #. interface
@@ -6736,6 +6826,11 @@ msgstr "Keychain"
 msgid "Label"
 msgstr "Etichetă"
 
+#. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "Labels, separated by commas"
+msgstr ""
+
 #. interface, ribbon
 #: crates/ui-egui/src/backstage.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
@@ -6861,6 +6956,11 @@ msgstr "Spațiere între rânduri"
 #, fuzzy
 msgid "Link"
 msgstr "Link"
+
+#. command label
+#: crates/engine/src/cmd/keep.rs
+msgid "Link Google Keep"
+msgstr ""
 
 #. command label
 #: crates/engine/src/cmd/tasks_remote.rs
@@ -7926,6 +8026,11 @@ msgstr "Mutare dosar"
 msgid "Move Items"
 msgstr "Mutare elemente"
 
+#. command label
+#: crates/engine/src/cmd/notes.rs
+msgid "Move Note to Trash"
+msgstr ""
+
 #. interface
 #: crates/ui-egui/src/dialogs.rs
 #, fuzzy
@@ -8008,6 +8113,11 @@ msgstr "Mutare în Nedorit"
 #, fuzzy
 msgid "Move to My Account's Calendar"
 msgstr "Mutare în calendarul contului meu"
+
+#. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "Move to Trash"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/dialogs.rs
@@ -8203,6 +8313,13 @@ msgstr ""
 
 #. ribbon
 #: crates/ui-egui/src/ribbon.rs
+msgid ""
+"New\n"
+"Note"
+msgstr ""
+
+#. ribbon
+#: crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid ""
 "New\n"
@@ -8265,6 +8382,11 @@ msgstr "Cutie poștală nouă"
 msgid "New Meeting"
 msgstr "Întâlnire nouă"
 
+#. command label
+#: crates/engine/src/cmd/notes.rs
+msgid "New Note"
+msgstr ""
+
 #. command label, interface
 #: crates/engine/src/cmd/tasks.rs crates/ui-egui/src/forms.rs
 #, fuzzy
@@ -8311,6 +8433,11 @@ msgstr "Mesaj nou"
 #, fuzzy
 msgid "New messages"
 msgstr "Mesaje noi"
+
+#. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "New note"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/forms.rs
@@ -8616,6 +8743,11 @@ msgid "No new version is ready to install."
 msgstr "Nicio versiune nouă nu este gata de instalare."
 
 #. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "No notes here."
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/attachment_preview.rs
 #, fuzzy
 msgid "No preview helper is available for this attachment."
@@ -8871,11 +9003,61 @@ msgstr "Nesalvat"
 msgid "Not verified"
 msgstr "Neverificat"
 
-#. interface, ribbon location
-#: crates/engine/src/cmd/notes.rs crates/ui-egui/src/forms.rs crates/ui-egui/src/merge_contacts.rs crates/ui-egui/src/nav.rs crates/ui-egui/src/people_view.rs crates/ui-egui/src/tasks_view.rs
+#. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "Note"
+msgstr ""
+
+#. command label
+#: crates/engine/src/cmd/keep.rs
+msgid "Note Changes to Send"
+msgstr ""
+
+#. command label, interface, name, ribbon location
+#: crates/engine/src/cmd/keep.rs crates/engine/src/cmd/notes.rs crates/engine/src/cmd/view.rs crates/engine/src/session.rs crates/ui-egui/src/forms.rs crates/ui-egui/src/merge_contacts.rs crates/ui-egui/src/notes_view.rs crates/ui-egui/src/people_view.rs crates/ui-egui/src/tasks_view.rs
 #, fuzzy
 msgid "Notes"
 msgstr "Note"
+
+#. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "Notes stay on this computer."
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/keep_sync.rs
+msgid "Notes: Google Keep can't be used for this account"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/keep_sync.rs
+msgid "Notes: Google Keep needs you to connect again"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/keep_sync.rs
+msgid "Notes: Google Keep no longer takes the sign-in; connect again"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/keep_sync.rs
+msgid "Notes: Google Keep not connected"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/keep_sync.rs
+msgid "Notes: Google Keep, changes waiting to be sent"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/keep_sync.rs
+msgid "Notes: Google Keep, not read yet"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/keep_sync.rs
+msgid "Notes: kept in step with Google Keep"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/approval.rs
@@ -9901,8 +10083,8 @@ msgstr "Imaginile de pe web vor fi descărcate în fiecare mesaj pe care îl des
 msgid "Pictures: {n} KB of {max} KB"
 msgstr "Imagini: {n} KB din {max} KB"
 
-#. command label, ribbon
-#: crates/engine/src/cmd/mail.rs crates/ui-egui/src/ribbon.rs
+#. command label, interface, ribbon
+#: crates/engine/src/cmd/mail.rs crates/ui-egui/src/notes_view.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid "Pin"
 msgstr "Fixare"
@@ -9914,7 +10096,7 @@ msgid "Pin to the top of the list"
 msgstr "Fixare în partea de sus a listei"
 
 #. interface
-#: crates/ui-egui/src/mail_view.rs
+#: crates/ui-egui/src/mail_view.rs crates/ui-egui/src/notes_view.rs
 #, fuzzy
 msgid "Pinned"
 msgstr "Fixat"
@@ -10474,7 +10656,7 @@ msgid "Reminders Window"
 msgstr "Fereastră mementouri"
 
 #. interface
-#: crates/ui-egui/src/backstage.rs crates/ui-egui/src/compose.rs crates/ui-egui/src/dialogs.rs crates/ui-egui/src/forms.rs crates/ui-egui/src/forms/junk.rs crates/ui-egui/src/open_shared.rs crates/ui-egui/src/reading/remote.rs crates/ui-egui/src/security.rs
+#: crates/ui-egui/src/backstage.rs crates/ui-egui/src/compose.rs crates/ui-egui/src/dialogs.rs crates/ui-egui/src/forms.rs crates/ui-egui/src/forms/junk.rs crates/ui-egui/src/notes_view.rs crates/ui-egui/src/open_shared.rs crates/ui-egui/src/reading/remote.rs crates/ui-egui/src/security.rs
 #, fuzzy
 msgid "Remove"
 msgstr "Eliminare"
@@ -10881,6 +11063,11 @@ msgstr "Repornire pentru actualizare"
 msgid "Restart to update is the owner's click."
 msgstr "Repornirea pentru actualizare e decizia proprietarului."
 
+#. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "Restore"
+msgstr ""
+
 #. command label
 #: crates/engine/src/cmd/snooze.rs
 msgid "Return Now"
@@ -10912,6 +11099,11 @@ msgstr "Inversare sortare"
 #, fuzzy
 msgid "Reverse the order"
 msgstr "Inversați ordinea"
+
+#. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "Revert"
+msgstr ""
 
 #. ribbon location
 #: crates/engine/src/cmd/writing_tools.rs
@@ -11132,7 +11324,7 @@ msgid "Saturday"
 msgstr "sâmbătă"
 
 #. interface
-#: crates/ui-egui/src/account_setup.rs crates/ui-egui/src/dialogs.rs crates/ui-egui/src/forms.rs crates/ui-egui/src/signatures.rs
+#: crates/ui-egui/src/account_setup.rs crates/ui-egui/src/dialogs.rs crates/ui-egui/src/forms.rs crates/ui-egui/src/notes_view.rs crates/ui-egui/src/signatures.rs
 #, fuzzy
 msgid "Save"
 msgstr "Salvare"
@@ -11522,6 +11714,11 @@ msgid "Search mail (try from:, has:attachment, is:unread)"
 msgstr "Căutare e-mail (încercați from:, has:attachment, is:unread)"
 
 #. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "Search notes"
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/chrome.rs
 #, fuzzy
 msgid "Search people"
@@ -11648,7 +11845,7 @@ msgid "Send & Receive"
 msgstr "Trimitere și primire"
 
 #. ribbon location
-#: crates/engine/src/cmd/account.rs crates/engine/src/cmd/auto_replies.rs crates/engine/src/cmd/calendar_feed.rs crates/engine/src/cmd/calendar_settings.rs crates/engine/src/cmd/ews_mail.rs crates/engine/src/cmd/graph_mail.rs crates/engine/src/cmd/graph_send.rs crates/engine/src/cmd/jmap_mail.rs crates/engine/src/cmd/remote.rs crates/engine/src/cmd/rules_remote.rs crates/engine/src/cmd/send_receive.rs crates/engine/src/cmd/snooze.rs crates/engine/src/cmd/sync_progress.rs crates/engine/src/cmd/tasks_remote.rs crates/ui-egui/src/lib.rs
+#: crates/engine/src/cmd/account.rs crates/engine/src/cmd/auto_replies.rs crates/engine/src/cmd/calendar_feed.rs crates/engine/src/cmd/calendar_settings.rs crates/engine/src/cmd/ews_mail.rs crates/engine/src/cmd/graph_mail.rs crates/engine/src/cmd/graph_send.rs crates/engine/src/cmd/jmap_mail.rs crates/engine/src/cmd/keep.rs crates/engine/src/cmd/remote.rs crates/engine/src/cmd/rules_remote.rs crates/engine/src/cmd/send_receive.rs crates/engine/src/cmd/snooze.rs crates/engine/src/cmd/sync_progress.rs crates/engine/src/cmd/tasks_remote.rs crates/ui-egui/src/lib.rs
 #, fuzzy
 msgid "Send / Receive"
 msgstr "Trimitere / primire"
@@ -12542,6 +12739,11 @@ msgstr "Conectați-vă acolo ca {address}. Această fereastră continuă singur�
 #, fuzzy
 msgid "Sign in there with an administrator account and accept. This window carries on by itself."
 msgstr "Conectați-vă acolo cu un cont de administrator și acceptați. Această fereastră continuă singură."
+
+#. interface
+#: crates/ui-egui/src/dialogs.rs
+msgid "Sign in to Google as {account} on Google's own page, then paste here the oauth_token cookie that page sets. MailCraft trades it for a Google Keep sign-in and never keeps the cookie."
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/lib.rs
@@ -14188,6 +14390,21 @@ msgid "The name of someone you know."
 msgstr "Numele cuiva pe care îl cunoașteți."
 
 #. interface
+#: crates/ui-egui/src/keep_sync.rs
+msgid "The notes couldn't be kept in step: the job stopped unexpectedly"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/keep_sync.rs
+msgid "The notes couldn't be taken in: {error}"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/keep_sync.rs
+msgid "The notes stay on this computer. MailCraft has forgotten the sign-in, but that doesn't take the access away at Google: to do that, remove this device in your Google Account, under Security › Your devices, or change your password."
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/account_setup.rs
 #, fuzzy
 msgid "The one in File › Options"
@@ -14946,6 +15163,11 @@ msgstr "Favoritele acestui cont vin din Outlook și se modifică acolo (Fișier 
 #, fuzzy
 msgid "This account's calendar can't be asked yet: Send/Receive signs it in first."
 msgstr "Calendarul acestui cont nu poate fi interogat încă: Trimitere/primire îl conectează întâi."
+
+#. interface
+#: crates/ui-egui/src/keep_sync.rs
+msgid "This account's notes can't be kept in step with Google Keep"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/people_view.rs
@@ -15751,7 +15973,7 @@ msgid "Time zones"
 msgstr "Fusuri orare"
 
 #. interface
-#: crates/ui-egui/src/forms.rs crates/ui-egui/src/report_problem.rs
+#: crates/ui-egui/src/forms.rs crates/ui-egui/src/notes_view.rs crates/ui-egui/src/report_problem.rs
 #, fuzzy
 msgid "Title"
 msgstr "Titlu"
@@ -15957,6 +16179,11 @@ msgid "Translate"
 msgstr "Traducere"
 
 #. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "Trash"
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/account_setup/help.rs
 #, fuzzy
 msgid "Trouble on that page? Sign in for mail only"
@@ -16089,6 +16316,11 @@ msgid "Typing * or - and a space at the start of a line starts a bulleted list, 
 msgstr "Dacă scrieți * sau - și un spațiu la începutul unui rând, începe o listă cu marcatori, iar 1. sau 1) începe una numerotată. Anulare readuce ce ați scris."
 
 #. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "Unarchive"
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/import_pst.rs
 #, fuzzy
 msgid "Under a folder on this computer:"
@@ -16117,6 +16349,11 @@ msgstr "Anulare tastare"
 #, fuzzy
 msgid "Undo {what}"
 msgstr "Anulare {what}"
+
+#. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "Unpin"
+msgstr ""
 
 #. interface, name
 #: crates/engine/src/session.rs crates/ui-egui/src/advanced_search.rs crates/ui-egui/src/folder_properties.rs
@@ -16426,6 +16663,11 @@ msgstr "Se așteaptă înregistrarea Google a MailCraft"
 #, fuzzy
 msgid "Waiting for the approval stopped unexpectedly"
 msgstr "Așteptarea aprobării s-a oprit neașteptat"
+
+#. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "Waiting to go to Google Keep"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/credits.rs
@@ -16824,6 +17066,11 @@ msgstr "Yahoo Mail"
 #, fuzzy
 msgid "Yes"
 msgstr "Da"
+
+#. interface
+#: crates/ui-egui/src/notes_view.rs
+msgid "Yes, delete for good"
+msgstr ""
 
 #. name
 #: crates/time/src/lib.rs
@@ -18306,6 +18553,11 @@ msgstr "contul nu există"
 #, fuzzy
 msgid "no such attachment"
 msgstr "atașamentul nu există"
+
+#. what a command says
+#: crates/engine/src/cmd/keep.rs crates/engine/src/cmd/notes.rs
+msgid "no such note"
+msgstr ""
 
 #. what a command says
 #: crates/model/src/rich.rs
@@ -21023,7 +21275,7 @@ msgstr[1] "{n} fără răspuns"
 msgstr[2] "{n} fără răspuns"
 
 #. interface
-#: crates/ui-egui/src/import_pst.rs
+#: crates/ui-egui/src/chrome.rs crates/ui-egui/src/import_pst.rs
 #, fuzzy
 msgid "{n} note"
 msgid_plural "{n} notes"

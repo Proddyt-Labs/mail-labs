@@ -157,7 +157,7 @@ fn search_box(app: &mut MailApp, ui: &mut Ui, rect: Rect) {
     let hint = match app.session.view.module {
         Module::People => tl!("Search people"),
         // Calendar and Tasks have no search of their own yet: what is typed looks in the mail.
-        Module::Calendar | Module::Tasks => tl!("Search mail"),
+        Module::Calendar | Module::Tasks | Module::Notes => tl!("Search mail"),
         Module::Mail => tl!("Search mail (try from:, has:attachment, is:unread)"),
     };
     // The tabs' size in the tall box of the title row; the small one in the macOS title bar.
@@ -481,6 +481,10 @@ pub fn status_bar(app: &mut MailApp, ui: &mut Ui) {
                     Module::People => {
                         let shown = crate::people_view::shown_total(app, ui.ctx());
                         st(ui, &tln!(shown, "{n} contact", "{n} contacts"), t.text_dim);
+                    }
+                    Module::Notes => {
+                        let live = app.session.mailbox.notes.values().filter(|n| !n.trashed && !n.archived).count();
+                        st(ui, &tln!(live, "{n} note", "{n} notes"), t.text_dim);
                     }
                     Module::Tasks => {
                         let shown = mailcraft_engine::cmd::tasks::shown_account(&app.session);

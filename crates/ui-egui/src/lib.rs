@@ -147,6 +147,8 @@ mod move_items;
 #[cfg(test)]
 mod move_items_tests;
 pub mod nav;
+// Proddyt Labs fork: the Notes module (Google Keep's notes and those from a .pst file).
+mod notes_view;
 #[cfg(test)]
 mod on_top_tests;
 mod open_shared;
@@ -220,6 +222,10 @@ pub mod software;
 mod symbol;
 mod sync_panel;
 pub mod task_sync;
+// Proddyt Labs fork: the Google Keep jobs and sign-in (see `keep_sync`).
+pub mod keep_sync;
+#[cfg(test)]
+mod keep_sync_tests;
 #[cfg(test)]
 mod task_sync_tests;
 // Proddyt Labs fork: Google Tasks in the window.
@@ -329,6 +335,10 @@ pub struct Services {
     pub graph_search: Option<Box<dyn Fn(server_search::GraphSearchJob) -> Receiver<mailcraft_model::sync::GraphSearchResult>>>,
     /// Keep a Microsoft account's tasks in step with Microsoft To Do (#248; [`task_sync`]).
     pub graph_tasks: Option<Box<dyn Fn(task_sync::TasksJob) -> Receiver<task_sync::TasksResult>>>,
+    /// Proddyt Labs fork: Google Keep's notes of an account, kept in step both ways ([`keep_sync`]).
+    pub keep_sync: Option<Box<dyn Fn(keep_sync::KeepJob) -> Receiver<keep_sync::KeepResult>>>,
+    /// Proddyt Labs fork: trade the cookie of Google's sign-in page for a Google Keep master token ([`keep_sync`]).
+    pub keep_connect: Option<Box<dyn Fn(keep_sync::KeepConnectJob) -> Receiver<keep_sync::KeepConnectResult>>>,
     /// Keep a Microsoft account's rules on its server (#566; [`rule_sync`]).
     pub graph_rules: Option<Box<dyn Fn(rule_sync::RulesJob) -> Receiver<rule_sync::RulesResult>>>,
     /// Read and change the automatic replies of a Microsoft account on its server
@@ -1137,6 +1147,18 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
         r#"{"account": number (an account whose to-dos Microsoft doesn't keep, such as a Gmail account with an app password), "confirmed": true} — Proddyt Labs fork: asks the owner, on Google's page in the browser, to let MailCraft read and change his Google Tasks lists and tasks (https://www.googleapis.com/auth/tasks), by itself and never with a mail sign-in; the Google account chosen there must be the account's own address. Allowed, the account is linked (tasks.linkGoogle) and its tasks are kept in step both ways at the next look; its refresh token is kept in the system's credential store, never in the mailbox. A build without a Google registration (MAILCRAFT_GOOGLE_CLIENT_ID and MAILCRAFT_GOOGLE_CLIENT_SECRET when it was built) can't, and says so. Answers {"pending": "signIn", "account": number}"#,
     ),
     (
+        "ui.connectGoogleKeep",
+        "Connect Google Keep",
+        "File › Info",
+        r#"{"account": number (an account of the owner's own at Google, not a shared mailbox)} — Proddyt Labs fork: opens the box where the owner pastes the oauth_token cookie of Google's sign-in page (accounts.google.com/EmbeddedSetup). The owner types or pastes it there; no command takes it. MailCraft trades it for a Google Keep sign-in kept in the system's credential store, and links the account. Answers {"pending": "keepConnect", "account": number}"#,
+    ),
+    (
+        "ui.disconnectGoogleKeep",
+        "Disconnect Google Keep",
+        "File › Info",
+        r#"{"account": number} — Proddyt Labs fork: forgets the Google Keep sign-in of that account (deleted from the system's credential store). The notes stay on this computer and Google is told nothing; removing the device under Google Account › Security › Your devices takes the access away there. Answers {"account": number, "disconnected": true}"#,
+    ),
+    (
         "ui.allowRules",
         "Allow Keeping Rules on the Server",
         "File › Info",
@@ -1573,6 +1595,13 @@ pub struct MailApp {
     /// The next sign-in asks for changing the automatic replies ([`auto_replies`]).
     replies_next: bool,
     pub(crate) tasks: task_sync::TaskSync,
+    /// Proddyt Labs fork: the Google Keep jobs and what they said ([`keep_sync`]).
+    pub(crate) gkeep: keep_sync::KeepSync,
+    /// The Google Keep master token of each connected account, for this session (also in the
+    /// system's credential store when the owner lets it). Never shown: a `Secret`.
+    pub(crate) gkeep_master: std::collections::HashMap<Id, mailcraft_model::keep::Secret>,
+    /// The Notes module's selection and what is typed in its editor ([`notes_view`]).
+    pub(crate) notes_ui: notes_view::NotesUi,
     rules_next: bool,
     pub(crate) rules: rule_sync::RuleSync,
     /// The automatic replies' jobs, and what is said of them ([`auto_replies`]).
@@ -1881,6 +1910,9 @@ impl MailApp {
             rules_next: false,
             replies_next: false,
             tasks: Default::default(),
+            gkeep: Default::default(),
+            gkeep_master: Default::default(),
+            notes_ui: Default::default(),
             rules: Default::default(),
             auto_replies: Default::default(),
             open_shared: Default::default(),
@@ -2708,6 +2740,15 @@ impl MailApp {
                 let Some(account) = p.get("account").and_then(Value::as_u64) else { return Some(Err(tl!("`account` is required").to_string())) };
                 self.begin_google_tasks_sign_in(account)
             }
+            "ui.connectGoogleKeep" => {
+                let Some(account) = p.get("account").and_then(Value::as_u64) else { return Some(Err(tl!("`account` is required").to_string())) };
+                self.begin_google_keep(account)
+            }
+            "ui.disconnectGoogleKeep" => {
+                let Some(account) = p.get("account").and_then(Value::as_u64) else { return Some(Err(tl!("`account` is required").to_string())) };
+                self.disconnect_google_keep(account);
+                Ok(json!({"account": account, "disconnected": true}))
+            }
             "ui.allowRules" => {
                 if p.get("confirmed").and_then(Value::as_bool) != Some(true) {
                     return Some(Err(tl!("Say that this is meant with \"confirmed\": true.").to_string()));
@@ -2931,7 +2972,10 @@ impl MailApp {
     /// account `account` of this mailbox, with the servers it has now: that account's own, never
     /// one found by its address (another may have it too, with other servers, AU3-03).
     fn remembered(&self, kind: &str, account: Id) -> Option<String> {
-        if !matches!(kind, "password" | "refresh" | task_sync::GOOGLE_TASKS_SECRET) || !self.ui.remember_sign_in || self.unconfirmed {
+        if !matches!(kind, "password" | "refresh" | task_sync::GOOGLE_TASKS_SECRET | keep_sync::KEEP_SECRET)
+            || !self.ui.remember_sign_in
+            || self.unconfirmed
+        {
             return None;
         }
         let a = self.session.mailbox.account(account)?;
@@ -2943,7 +2987,7 @@ impl MailApp {
     /// Have the operating system remember a secret for the account `account`, when the owner
     /// wants that: under that account's own name.
     fn remember(&mut self, kind: &str, account: Id, secret: &str) {
-        if !matches!(kind, "password" | "refresh" | task_sync::GOOGLE_TASKS_SECRET)
+        if !matches!(kind, "password" | "refresh" | task_sync::GOOGLE_TASKS_SECRET | keep_sync::KEEP_SECRET)
             || !self.ui.remember_sign_in
             || secret.is_empty()
             || self.data_removed
@@ -3025,7 +3069,7 @@ impl MailApp {
     pub(crate) fn forget_account_secrets(&mut self, a: &mailcraft_model::Account) {
         let Some(store) = &self.services.secrets else { return };
         let mut gone = Vec::new();
-        for kind in ["password", "refresh", task_sync::GOOGLE_TASKS_SECRET] {
+        for kind in ["password", "refresh", task_sync::GOOGLE_TASKS_SECRET, keep_sync::KEEP_SECRET] {
             for key in Self::secret_keys_of(kind, a) {
                 store.delete(&key);
                 if store.get(&key).is_none() {
@@ -4795,6 +4839,7 @@ impl MailApp {
             self.calendar_tick(ctx);
             // The tasks by themselves, after the calendar ([`task_sync`]).
             self.tasks_tick(ctx);
+            self.gkeep_tick(ctx);
             // The rules on the servers by themselves, after the tasks ([`rule_sync`]).
             self.rules_tick(ctx);
             // The automatic replies, read now and then so that the status bar can say they are on.
@@ -5252,6 +5297,7 @@ impl MailApp {
                 mailcraft_engine::Module::Calendar => calendar_view::show(self, ui),
                 mailcraft_engine::Module::People => people_view::show(self, ui),
                 mailcraft_engine::Module::Tasks => tasks_view::show(self, ui),
+                mailcraft_engine::Module::Notes => notes_view::show(self, ui),
             });
         }
         windows::compose_window::back(self, fronted);

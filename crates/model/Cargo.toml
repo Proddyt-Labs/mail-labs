@@ -19,6 +19,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 mailcraft-charset = { workspace = true }
+# Proddyt Labs fork: a Google Keep sign-in secret is overwritten when dropped (`keep::Secret`). No
+# std, builds for the browser, and already in the tree (the S/MIME crate and the window use it).
+zeroize = { version = "1", default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
 mailcraft-i18n = { workspace = true, features = ["test-support"] }

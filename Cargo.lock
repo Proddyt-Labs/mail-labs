@@ -3196,6 +3196,7 @@ dependencies = [
  "mailcraft-model",
  "mailcraft-net",
  "mailcraft-time",
+ "serde_json",
 ]
 
 [[package]]
@@ -3305,6 +3306,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "zeroize",
 ]
 
 [[package]]
@@ -3337,6 +3339,7 @@ dependencies = [
  "schannel",
  "serde_json",
  "thiserror 2.0.21",
+ "zeroize",
 ]
 
 [[package]]

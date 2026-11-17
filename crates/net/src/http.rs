@@ -380,7 +380,12 @@ pub(crate) fn exchange<S: Read + Write>(stream: &mut S, url: &Url, request: &Req
 /// for the connection to stay open after the answer; without, for it to close.
 fn head_of(method: &str, url: &Url, headers: &[(&str, &str)], body: Option<usize>, keep: bool) -> String {
     // The address was checked when it was read: nothing in it can end the line early.
-    let mut head = format!("{method} {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: {USER_AGENT}\r\n", url.path, url.authority());
+    let mut head = format!("{method} {} HTTP/1.1\r\nHost: {}\r\n", url.path, url.authority());
+    // (Proddyt Labs fork: a caller that must speak as a particular client, as Google's Android
+    // sign-in expects, names its own `User-Agent`; every other request says "MailCraft".)
+    if !headers.iter().any(|(name, _)| name.eq_ignore_ascii_case("user-agent")) {
+        head.push_str(&format!("User-Agent: {USER_AGENT}\r\n"));
+    }
     for (name, value) in headers {
         // Nor can a header: a name that isn't one is left out, and a value loses its control
         // characters. Whether the connection stays open is this crate's to say, not a caller's.

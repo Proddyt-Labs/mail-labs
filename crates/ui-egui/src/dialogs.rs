@@ -103,6 +103,13 @@ pub enum Dialog {
         /// The owner clicked its eye: shown until the next click or the dialog's end (#438).
         shown: bool,
     },
+    /// Proddyt Labs fork: the cookie of Google's sign-in page, pasted for Google Keep. Masked; it
+    /// is traded at once and never kept (a `Secret` leaves the box, which is then cleared).
+    KeepConnect {
+        account: Id,
+        cookie: String,
+        shown: bool,
+    },
     /// A message being written has unsaved changes and something wants to close it or put
     /// another in its place (#442).
     DiscardDraft {
@@ -249,6 +256,7 @@ impl Dialog {
             Dialog::DateTime { .. } => "dateTime",
             Dialog::WordCount { .. } => "wordCount",
             Dialog::Password { .. } => "password",
+            Dialog::KeepConnect { .. } => "keepConnect",
             Dialog::DiscardDraft { .. } => "discardDraft",
             Dialog::Confirm { .. } => "confirm",
             Dialog::Report { name, .. } => name,
@@ -1906,6 +1914,34 @@ pub fn show(app: &mut MailApp, ctx: &egui::Context) {
                 if let Err(e) = r {
                     app.status(e);
                 }
+                close = true;
+            }
+        }
+        Dialog::KeepConnect { account, cookie, shown } => {
+            let watch = app.secret_watch();
+            let who = app.session.mailbox.account(*account).map(|a| a.email.clone()).unwrap_or_default();
+            let mut submit = false;
+            let open = window(ctx, tl!("Connect Google Keep"), 460.0, |ui| {
+                ui.label(crate::i18n::fmt(
+                    tl!("Sign in to Google as {account} on Google's own page, then paste here the oauth_token cookie that page sets. MailCraft trades it for a Google Keep sign-in and never keeps the cookie."),
+                    &[("account", &who)],
+                ));
+                ui.label(egui::RichText::new(crate::keep_sync::SETUP_PAGE).color(t.text_dim).size(11.0));
+                let room = egui::Margin::from(ui.spacing().button_padding);
+                let resp = crate::secret_field::field(ui, cookie, shown, watch, room, |edit| edit);
+                crate::text_menu::hold(&resp);
+                let (ok, cancel) = buttons(ui, tl!("Connect"), !cookie.is_empty());
+                submit = ok || (enter && !cookie.is_empty());
+                close |= cancel;
+            });
+            close |= !open;
+            if submit {
+                let mut taken = std::mem::take(cookie);
+                match app.begin_keep_connect(*account, &mut taken) {
+                    Ok(()) => app.status(tl!("Connecting to Google Keep…")),
+                    Err(e) => app.status(e),
+                }
+                cookie.clear();
                 close = true;
             }
         }

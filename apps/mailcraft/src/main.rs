@@ -1065,6 +1065,7 @@ fn services(
     let (ews_ctx, ews_fetch_ctx, ews_setup_ctx) = (ctx.clone(), ctx.clone(), ctx.clone());
     let search_ctx = ctx.clone();
     let tasks_ctx = ctx.clone();
+    let (keep_ctx, keep_connect_ctx) = (ctx.clone(), ctx.clone());
     let rules_ctx = ctx.clone();
     let replies_ctx = ctx.clone();
     let ahead_ctx = ctx.clone();
@@ -1150,6 +1151,20 @@ fn services(
             let host = host.clone();
             move |job: mailcraft_ui_egui::task_sync::TasksJob| {
                 host_job(host.as_ref(), &tasks_ctx, "microsoft to do", move || mailcraft_host::tasks::run(job))
+            }
+        })),
+        // Proddyt Labs fork: the owner's Google Keep notes, kept in step, and the trade of a pasted
+        // cookie for a Keep sign-in (the host's jobs; the window never sees a token it isn't given).
+        keep_sync: Some(Box::new({
+            let host = host.clone();
+            move |job: mailcraft_ui_egui::keep_sync::KeepJob| {
+                host_job(host.as_ref(), &keep_ctx, "google keep", move || mailcraft_host::keep::run(job))
+            }
+        })),
+        keep_connect: Some(Box::new({
+            let host = host.clone();
+            move |job: mailcraft_ui_egui::keep_sync::KeepConnectJob| {
+                host_job(host.as_ref(), &keep_connect_ctx, "google keep sign-in", move || mailcraft_host::keep::connect(job))
             }
         })),
         // The rules a Microsoft account's server keeps (#566).

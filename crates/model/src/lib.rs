@@ -21,6 +21,7 @@ mod feed;
 pub mod gmail;
 mod jmap_server;
 mod junk;
+pub mod keep;
 pub mod load_limit;
 mod mailbox;
 mod message;
@@ -28,6 +29,9 @@ pub mod messages;
 #[cfg(test)]
 mod messages_tests;
 mod note;
+// Proddyt Labs fork: what the Google Keep types show of a sign-in.
+#[cfg(test)]
+mod keep_tests;
 mod offline;
 pub mod pictures;
 pub mod pop;
@@ -68,6 +72,7 @@ pub use feed::{
 pub use gmail::{GmailCategory, is_gmail_host};
 pub use jmap_server::{JmapServer, MAX_JMAP_ID, is_jmap_id};
 pub use junk::{Added, JunkList, JunkLists, MAX_JUNK_ENTRIES, junk_entry, junk_key};
+pub use keep::{KeepLabel, KeepLink, KeepState, NoteFields, NoteItem, Secret};
 pub use load_limit::{MIN_ITEM_BYTES, from_json};
 pub use mailbox::{
     Account, AccountKind, AsWritten, BETWEEN_MAILBOXES, COPY_INTO_OUTBOX, Category, Directory, DownloadInFull, FOLDERS_NOT_DELETED_YET,

@@ -30,6 +30,9 @@ flate2 = { workspace = true }
 serde_json = { workspace = true }
 mailcraft-charset = { workspace = true }
 ring = { workspace = true }
+# Proddyt Labs fork: the Google Keep sign-in secrets are overwritten when dropped (already in the
+# tree: the S/MIME crate and the window use it).
+zeroize = { version = "1", default-features = false, features = ["alloc"] }
 # The Favorites of Outlook come inside an XML document (`graph::favorites`): read by a reader
 # that takes no DTD and expands no entity.
 quick-xml = { workspace = true }
