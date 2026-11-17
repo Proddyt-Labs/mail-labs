@@ -112,7 +112,15 @@ fn nothing_a_job_or_its_result_holds_shows_a_secret() {
     let connect = KeepConnectJob { account: mailbox.account(account).cloned().unwrap(), cookie: Secret::new(COOKIE.into()) };
     let result = KeepResult { account, errors: vec!["x".into()], ..Default::default() };
     let done = crate::keep::KeepConnectResult { account, master: Some(Secret::new(MASTER.into())), error: None };
-    for shown in [format!("{k:?}"), format!("{k:#?}"), format!("{connect:?}"), format!("{connect:#?}"), format!("{result:?}"), format!("{done:?}"), format!("{done:#?}")] {
+    for shown in [
+        format!("{k:?}"),
+        format!("{k:#?}"),
+        format!("{connect:?}"),
+        format!("{connect:#?}"),
+        format!("{result:?}"),
+        format!("{done:?}"),
+        format!("{done:#?}"),
+    ] {
         for secret in [MASTER, ACCESS, COOKIE, "STANDIN", "standin"] {
             assert!(!shown.contains(secret), "{shown}");
         }

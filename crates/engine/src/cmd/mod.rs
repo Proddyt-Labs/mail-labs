@@ -80,6 +80,7 @@ pub mod jmap_up;
 pub mod junk;
 #[cfg(test)]
 mod junk_tests;
+pub mod keep;
 #[cfg(test)]
 mod keyboard_selection_tests;
 pub mod keys;
@@ -144,7 +145,6 @@ mod snooze_tests;
 pub mod sync_progress;
 pub mod tasks;
 pub mod tasks_remote;
-pub mod keep;
 // Proddyt Labs fork: Google Tasks.
 #[cfg(test)]
 mod google_tasks_tests;

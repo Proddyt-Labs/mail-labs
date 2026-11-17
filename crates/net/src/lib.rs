@@ -53,9 +53,9 @@ mod http;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod https;
 #[cfg(not(target_arch = "wasm32"))]
-mod kept;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod keep_auth;
+#[cfg(not(target_arch = "wasm32"))]
+mod kept;
 #[cfg(not(target_arch = "wasm32"))]
 mod kinds;
 #[cfg(not(target_arch = "wasm32"))]

@@ -341,11 +341,8 @@ pub fn merge_keep(mailbox: &mut Mailbox, download: &KeepDownload) -> Result<Merg
         }
     }
     let state = mailbox.keep.get(&account).cloned();
-    let mut by_link: HashMap<String, Id> = mailbox
-        .notes
-        .values()
-        .filter_map(|n| n.keep.as_ref().filter(|k| k.account == account).map(|k| (k.id.clone(), n.id)))
-        .collect();
+    let mut by_link: HashMap<String, Id> =
+        mailbox.notes.values().filter_map(|n| n.keep.as_ref().filter(|k| k.account == account).map(|k| (k.id.clone(), n.id))).collect();
     // Notes whose Keep fields (and items) were taken from Keep, so that they are as Keep has them.
     let mut taken: HashSet<Id> = HashSet::new();
     // Notes kept as they are here (changed here after Keep's version).
@@ -430,7 +427,13 @@ pub fn merge_keep(mailbox: &mut Mailbox, download: &KeepDownload) -> Result<Merg
                     }
                 }
                 None if take && !gone && note.items.len() < mailcraft_model::keep::MAX_NOTE_ITEMS => {
-                    note.items.push(NoteItem { id: node.id.clone(), text: node.text.clone(), checked: node.checked, sort: node.sort, raw: node.raw.clone() });
+                    note.items.push(NoteItem {
+                        id: node.id.clone(),
+                        text: node.text.clone(),
+                        checked: node.checked,
+                        sort: node.sort,
+                        raw: node.raw.clone(),
+                    });
                     item_touched.insert(id);
                 }
                 None => {}

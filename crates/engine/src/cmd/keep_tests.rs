@@ -166,7 +166,11 @@ fn a_note_changed_here_after_keeps_version_stays_and_goes_up() {
 fn a_note_made_here_goes_up_with_its_body_and_a_new_label_and_is_then_as_keep_has_it() {
     let (mut s, a) = session();
     merge_keep(&mut s.mailbox, &first_download(a)).unwrap();
-    let made = run(&mut s, "notes.create", json!({"title": "Idea", "text": "  a thought  ", "categories": ["Work", "Home"], "pinned": true, "color": "teal"}));
+    let made = run(
+        &mut s,
+        "notes.create",
+        json!({"title": "Idea", "text": "  a thought  ", "categories": ["Work", "Home"], "pinned": true, "color": "teal"}),
+    );
     assert_eq!(made["keep"], json!(a));
     let id = made["id"].as_u64().unwrap();
     let note = (*s.mailbox.notes[&id]).clone();

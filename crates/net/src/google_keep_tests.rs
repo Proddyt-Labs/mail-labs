@@ -108,7 +108,10 @@ fn a_note_is_read_as_the_mailbox_keeps_it() {
     assert_eq!(n.updated, mailcraft_time::iso_to_timestamp("2026-02-01T10:00:00Z", 0).unwrap());
     assert!(n.raw.contains("someFieldWeDoNotKnow"));
     let i = node_of(&item("i1", "n1", "milk", true)).unwrap();
-    assert_eq!((i.kind, i.parent_id.as_str(), i.text.as_str(), i.checked, i.sort, i.parent_server_id.as_str()), (KeepKind::Item, "n1", "milk", true, 5000, "n1"));
+    assert_eq!(
+        (i.kind, i.parent_id.as_str(), i.text.as_str(), i.checked, i.sort, i.parent_server_id.as_str()),
+        (KeepKind::Item, "n1", "milk", true, 5000, "n1")
+    );
     // Colour: Keep's default is white; trash and deletion are times, and the epoch is no.
     let mut raw = note("n3", "", "2026-02-01T10:00:00.000Z");
     raw["color"] = json!("DEFAULT");
@@ -166,7 +169,14 @@ fn what_was_changed_here_goes_up_on_the_first_request_and_keeps_what_it_does_not
 
 #[test]
 fn a_new_note_is_sent_in_the_shape_the_android_app_makes_one() {
-    let note = KeepNode { id: "18c.0000000000000001".into(), kind: KeepKind::Note, title: "Hello".into(), color: "white".into(), sort: 42, ..Default::default() };
+    let note = KeepNode {
+        id: "18c.0000000000000001".into(),
+        kind: KeepKind::Note,
+        title: "Hello".into(),
+        color: "white".into(),
+        sort: 42,
+        ..Default::default()
+    };
     let item = KeepNode {
         id: "18c.0000000000000002".into(),
         parent_id: note.id.clone(),
@@ -176,12 +186,18 @@ fn a_new_note_is_sent_in_the_shape_the_android_app_makes_one() {
         ..Default::default()
     };
     let n = node_json(&note, NOW);
-    assert_eq!((n["type"].as_str(), n["parentId"].as_str(), n["title"].as_str(), n["color"].as_str()), (Some("NOTE"), Some("root"), Some("Hello"), Some("DEFAULT")));
+    assert_eq!(
+        (n["type"].as_str(), n["parentId"].as_str(), n["title"].as_str(), n["color"].as_str()),
+        (Some("NOTE"), Some("root"), Some("Hello"), Some("DEFAULT"))
+    );
     assert_eq!(n["nodeSettings"]["checkedListItemsPolicy"], "GRAVEYARD");
     assert_eq!(n["annotationsGroup"]["kind"], "notes#annotationsGroup");
     assert!(n.get("serverId").is_none() && n.get("labelIds").is_none());
     let i = node_json(&item, NOW);
-    assert_eq!((i["type"].as_str(), i["parentId"].as_str(), i["text"].as_str(), i["checked"].as_bool()), (Some("LIST_ITEM"), Some("18c.0000000000000001"), Some("body text"), Some(false)));
+    assert_eq!(
+        (i["type"].as_str(), i["parentId"].as_str(), i["text"].as_str(), i["checked"].as_bool()),
+        (Some("LIST_ITEM"), Some("18c.0000000000000001"), Some("body text"), Some(false))
+    );
     assert!(i["parentServerId"].is_null());
     let l = label_json(&KeepLabel { id: "tag.a".into(), name: "A".into() }, NOW);
     assert_eq!((l["mainId"].as_str(), l["name"].as_str()), (Some("tag.a"), Some("A")));
@@ -230,7 +246,8 @@ fn a_hostile_answer_is_cut_to_size() {
     let long = "x".repeat(5_000);
     let mut raw = note("n1", &long, "2026-02-01T10:00:00.000Z");
     raw["text"] = json!("a\u{1}b\u{0}c");
-    let keep = Keep::new(vec![(200, json!({"toVersion": "v1", "truncated": false, "nodes": [raw, {"id": "bad id", "type": "NOTE", "parentId": "root"}]}))]);
+    let keep =
+        Keep::new(vec![(200, json!({"toVersion": "v1", "truncated": false, "nodes": [raw, {"id": "bad id", "type": "NOTE", "parentId": "root"}]}))]);
     let got = run(&keep, &KeepUpload::default()).unwrap();
     assert_eq!(got.nodes[0].title.chars().count(), 1_000);
     assert!(!got.nodes[0].text.chars().any(char::is_control));

@@ -8,9 +8,7 @@ use std::cell::RefCell;
 
 use crate::NetError;
 use crate::http::Url;
-use crate::keep_auth::{
-    KEEP_APP, KEEP_CLIENT_SIG, KEEP_SCOPES, Secret, access_token_with, android_id, exchange_token_with, may_go_to,
-};
+use crate::keep_auth::{KEEP_APP, KEEP_CLIENT_SIG, KEEP_SCOPES, Secret, access_token_with, android_id, exchange_token_with, may_go_to};
 
 const COOKIE: &str = "oauth2_4/standin-cookie-value-123";
 const MASTER: &str = "aas_et/STANDIN-MASTER-TOKEN-456";
@@ -132,7 +130,9 @@ fn an_answer_without_the_token_is_no_success_even_with_status_200() {
 #[test]
 fn a_secret_shows_itself_nowhere() {
     let secret = Secret::new(MASTER.to_string());
-    for shown in [format!("{secret:?}"), format!("{secret}"), format!("{secret:#?}"), format!("{:?}", Some(&secret)), format!("{:?}", vec![secret.clone()])] {
+    for shown in
+        [format!("{secret:?}"), format!("{secret}"), format!("{secret:#?}"), format!("{:?}", Some(&secret)), format!("{:?}", vec![secret.clone()])]
+    {
         assert!(!shown.contains("aas_et") && !shown.contains("STANDIN"), "{shown}");
     }
     assert_eq!(secret.expose(), MASTER);
