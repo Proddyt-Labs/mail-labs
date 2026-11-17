@@ -68,6 +68,7 @@ pub fn module_bar(app: &mut MailApp, ui: &mut Ui) {
                 Module::Calendar => ("calendar", "view.calendar"),
                 Module::People => ("people", "view.people"),
                 Module::Tasks => ("tasks", "view.tasks"),
+                Module::Notes => ("notes", "view.notes"),
             };
             let (r, resp) = ui.allocate_exact_size(vec2(RAIL_W, RAIL_PITCH), Sense::click());
             let active = app.session.view.module == m;
@@ -87,7 +88,7 @@ pub fn module_bar(app: &mut MailApp, ui: &mut Ui) {
             }
         }
         // What a .pst file's notes and journal entries will be read in: kept, with no view yet.
-        for (icon, name) in [("notes", tl!("Notes")), ("journal", tl!("Journal"))] {
+        for (icon, name) in [("journal", tl!("Journal"))] {
             let (r, resp) = ui.allocate_exact_size(vec2(RAIL_W, RAIL_PITCH), Sense::hover());
             let ink = t.icon.linear_multiply(0.45);
             icons::paint(ui.painter(), Rect::from_center_size(r.center(), vec2(24.0, 24.0)), icon, ink, ink);

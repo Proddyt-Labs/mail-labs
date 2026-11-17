@@ -60,9 +60,6 @@ pub(crate) enum KeepStatus {
     Refused,
 }
 
-/// What the owner is told when disconnecting: what was done, and what only Google can do.
-pub(crate) const REVOKE_NOTE: &str = "The notes stay on this computer. MailCraft has forgotten the sign-in, but that doesn't take the access away at Google: to do that, remove this device in your Google Account, under Security › Your devices, or change your password.";
-
 /// The state of the Keep jobs, in the window.
 #[derive(Default)]
 pub struct KeepSync {
@@ -252,7 +249,7 @@ impl MailApp {
         if self.dialog.is_some() || self.session.mailbox.account(account).is_none_or(|a| a.is_shared()) || self.services.keep_connect.is_none() {
             return false;
         }
-        self.dialog = Some(Dialog::KeepConnect { account, cookie: String::new(), shown: false, error: String::new(), busy: false });
+        self.dialog = Some(Dialog::KeepConnect { account, cookie: String::new(), shown: false });
         true
     }
 
@@ -297,33 +294,25 @@ impl MailApp {
         if opening != self.session.openings() {
             return;
         }
-        let in_box = matches!(&self.dialog, Some(Dialog::KeepConnect { account: a, .. }) if *a == account);
         match answer.master {
             Some(master) if !master.is_empty() => {
-                self.remember(KEEP_SECRET, account, master.expose());
-                self.gkeep_master.insert(account, master);
+                // (Linked first: a master token of an account that isn't linked is not kept.)
                 if let Err(e) = self.run("keep.link", json!({"account": account, "linked": true})) {
                     self.status(crate::i18n::fmt(tl!("Google Keep wasn't connected: {error}"), &[("error", &e)]));
                     return;
                 }
+                self.remember(KEEP_SECRET, account, master.expose());
+                self.gkeep_master.insert(account, master);
                 log::info!("keep, account {account}: Google Keep connected; the next job reads it");
                 self.gkeep.status.remove(&account);
                 self.gkeep.book.worked(account);
                 self.gkeep.book.forget_checked(account);
-                if in_box {
-                    self.dialog = None;
-                }
                 self.status(tl!("Google Keep connected: your notes are kept in step with it"));
             }
             _ => {
                 // (A fixed sentence of the network layer: never what Google wrote.)
                 let said = answer.error.unwrap_or_else(|| tl!("Google didn't give a Keep sign-in").to_string());
-                if in_box && let Some(Dialog::KeepConnect { error, busy, .. }) = &mut self.dialog {
-                    *error = said;
-                    *busy = false;
-                } else {
-                    self.status(crate::i18n::fmt(tl!("Google Keep wasn't connected: {error}"), &[("error", &said)]));
-                }
+                self.status(crate::i18n::fmt(tl!("Google Keep wasn't connected: {error}"), &[("error", &said)]));
             }
         }
     }

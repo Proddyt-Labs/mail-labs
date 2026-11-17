@@ -385,6 +385,7 @@ pub(crate) fn describe_tab(app: &MailApp, name: &str) -> Tab {
             Module::Calendar => (home_calendar(app), "Home calendar"),
             Module::People => (home_people(app), "Home people"),
             Module::Tasks => (home_tasks(app), "Home tasks"),
+            Module::Notes => (home_notes(), "Home notes"),
         },
     };
     fit::prioritise(&mut tab, which);
@@ -611,6 +612,10 @@ fn home_people(app: &MailApp) -> Tab {
 /// there are two or more.
 pub(crate) fn merge_params(app: &MailApp) -> Value {
     if app.people_picked.len() >= 2 { json!({"ids": app.people_picked}) } else { json!({}) }
+}
+
+fn home_notes() -> Tab {
+    Tab::of(vec![g("New", vec![Item::big("newNote", "New\nNote", "notes.create", json!({"title": "New note"})).at(0, 1)])])
 }
 
 fn home_tasks(app: &MailApp) -> Tab {
