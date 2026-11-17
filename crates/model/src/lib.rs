@@ -28,6 +28,7 @@ pub mod messages;
 #[cfg(test)]
 mod messages_tests;
 mod note;
+pub mod keep;
 mod offline;
 pub mod pictures;
 pub mod pop;
@@ -82,6 +83,7 @@ pub use message::{
     text_hash,
 };
 pub use messages::Messages;
+pub use keep::{KeepLabel, KeepLink, KeepState, NoteFields, NoteItem, Secret};
 pub use note::{JournalEntry, Note};
 pub use offline::{KeepOffline, OfflineWindow};
 pub use remote::{AccountChoice, Origin};

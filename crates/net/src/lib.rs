@@ -43,6 +43,8 @@ mod favorite_paths;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod gmail;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod google_keep;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod google_tasks;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod graph;
@@ -52,6 +54,8 @@ mod http;
 pub mod https;
 #[cfg(not(target_arch = "wasm32"))]
 mod kept;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod keep_auth;
 #[cfg(not(target_arch = "wasm32"))]
 mod kinds;
 #[cfg(not(target_arch = "wasm32"))]
@@ -88,6 +92,13 @@ mod tests;
 #[cfg(test)]
 #[cfg(not(target_arch = "wasm32"))]
 mod google_tasks_tests;
+// Proddyt Labs fork: Google Keep.
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+mod google_keep_tests;
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+mod keep_auth_tests;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use native::*;

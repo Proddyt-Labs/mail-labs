@@ -251,6 +251,7 @@ const SAFE: &[&str] = &[
     "view.calendar",
     "view.people",
     "view.tasks",
+    "view.notes",
     "view.readingPane",
     "view.gmailCategories",
     "view.folderPane",
@@ -369,6 +370,11 @@ const SAFE: &[&str] = &[
     "tasks.list",
     "notes.list",
     "notes.get",
+    // Proddyt Labs fork: a note made or changed here goes to the owner's own Google Keep at the next
+    // sync (never to anybody else), and a note moved to the Trash comes back with `trashed: false`.
+    "notes.create",
+    "notes.update",
+    "notes.delete",
     "journal.list",
     "journal.get",
     "tasks.arrange",
@@ -459,6 +465,8 @@ const DELETE: &[&str] = &[
     // A merge removes the contacts merged into the kept one.
     "people.merge",
     "tasks.delete",
+    // Proddyt Labs fork: a note deleted for good (in Google Keep too).
+    "notes.deleteForever",
     "category.remove",
     "compose.discard",
     "ui.closeWindow",
@@ -493,6 +501,11 @@ const ACCOUNTS: &[&str] = &[
     // Proddyt Labs fork: Google's page for the owner's Google Tasks, and the account linked to it.
     "ui.connectGoogleTasks",
     "tasks.linkGoogle",
+    // Proddyt Labs fork: the owner's Google Keep sign-in is taken and forgotten in the window alone
+    // (the code is typed into a masked box there; no command takes or gives one).
+    "ui.connectGoogleKeep",
+    "ui.disconnectGoogleKeep",
+    "keep.link",
     "ui.allowRules",
     "ui.allowAutomaticReplies",
     "ui.checkCalendar",
@@ -587,6 +600,8 @@ const NEVER: &[&str] = &[
     "sync.taskChanges",
     "sync.applyTaskChanges",
     "sync.applyTasks",
+    "sync.keepChanges",
+    "sync.applyKeep",
     "sync.ruleChanges",
     "sync.applyRuleChanges",
     "sync.applyRules",

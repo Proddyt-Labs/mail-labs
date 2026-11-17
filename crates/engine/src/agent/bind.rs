@@ -40,6 +40,8 @@ pub enum Object {
     Contact,
     /// A task: the one named, or the selected one.
     Task,
+    /// A note: the one named.
+    Note,
     /// An appointment or a meeting: the one named, or the selected one.
     Event,
     /// A calendar.
@@ -89,6 +91,7 @@ pub fn object(id: &str) -> Option<Object> {
         "folder.empty" | "folder.delete" => FolderContent,
         "rules.run" | "file.import" | "calendar.deleteAnsweredRequests" => Folder,
         "people.delete" | "people.merge" => Contact,
+        "notes.deleteForever" => Note,
         "tasks.delete" | "tasks.edit" | "tasks.complete" | "tasks.categorize" | "tasks.setStatus" | "tasks.new" | "tasks.fromMessage" => Task,
         // A calendar command that writes to people is asked about whatever it is (`classify`).
         "calendar.forward" | "calendar.propose" | "calendar.delete" | "people.meeting" | "ui.joinMeeting" => Event,
@@ -113,6 +116,9 @@ pub fn object(id: &str) -> Option<Object> {
         | "ui.allowTasks"
         | "ui.connectGoogleTasks"
         | "tasks.linkGoogle"
+        | "ui.connectGoogleKeep"
+        | "ui.disconnectGoogleKeep"
+        | "keep.link"
         | "ui.allowRules"
         | "ui.allowAutomaticReplies"
         | "ui.adminConsent"
