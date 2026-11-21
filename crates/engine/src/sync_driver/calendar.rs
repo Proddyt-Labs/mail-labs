@@ -51,6 +51,10 @@ pub struct CalendarDriver {
     /// When each account's calendar was last asked for, the failures since the last answer and
     /// the changes waiting.
     pub book: JobBook,
+    /// The time as the front end's last look read it (milliseconds): a job's answer is taken in
+    /// within a frame of it, so a job that came to nothing waits from when it ended, however long
+    /// it ran (#661).
+    pub clock: f64,
     /// What an account's server was last told, and when: the very same again right away would
     /// mean that the telling doesn't settle anything, and is left for later.
     sent: HashMap<Id, (EventsUpload, f64)>,
@@ -86,9 +90,31 @@ pub struct CalendarDriver {
     held_told: HashMap<Id, usize>,
     /// What the last check of the calendar connection came to, as its report says it.
     pub last_check: Vec<String>,
+    /// The accounts whose sign-in the owner is still to allow sending, calendar and contacts
+    /// through Microsoft for ("Connect calendar and contacts").
+    pub consent_needed: HashSet<Id>,
+    /// When each account's Graph run last had the wide stretch and the contacts (milliseconds).
+    pub checked: HashMap<Id, f64>,
+    /// Where each shared mailbox's calendars stand with the owner's permission to read them.
+    pub shared_perm: HashMap<Id, super::SharedPermission>,
 }
 
 impl CalendarDriver {
+    /// Account removal: nothing of these accounts' calendar jobs or permission is kept.
+    pub fn forget_accounts(&mut self, gone: &HashSet<Id>) {
+        self.book.forget_accounts(gone);
+        self.sent.retain(|account, _| !gone.contains(account));
+        self.by_hand.retain(|account| !gone.contains(account));
+        self.shown.retain(|account, _| !gone.contains(account));
+        self.extras_missing.retain(|account| !gone.contains(account));
+        self.settings_asked.retain(|account, _| !gone.contains(account));
+        self.send_waits.retain(|account| !gone.contains(account));
+        self.held_told.retain(|account, _| !gone.contains(account));
+        self.consent_needed.retain(|account| !gone.contains(account));
+        self.checked.retain(|account, _| !gone.contains(account));
+        self.shared_perm.retain(|account, _| !gone.contains(account));
+    }
+
     /// Another mailbox took the place of the open one: what a job in flight was for is let go of
     /// (AU3-V8).
     pub fn forget_jobs(&mut self) {
@@ -160,6 +186,11 @@ impl CalendarDriver {
         in_front && self.shown.get(&account).is_some_and(|shown| *shown != window)
     }
 
+    /// Whether the wide stretch of `account`'s calendar and its contacts are due at `now`.
+    pub fn directory_is_due(&self, account: Id, now: f64) -> bool {
+        Self::directory_due(self.checked.get(&account).copied(), now)
+    }
+
     /// Whether the wide stretch of an account's calendar and its contacts are due (`asked`: when
     /// the account's Graph run last had them): every quarter of an hour, and at start-up.
     pub fn directory_due(asked: Option<f64>, now: f64) -> bool {
@@ -194,10 +225,11 @@ impl CalendarDriver {
         }
     }
 
-    /// The job answered: it brought nothing (`nothing`, which the failures count), or it worked.
+    /// The job answered: it brought nothing (`nothing`, which the failures count, from when the
+    /// answer was read: [`clock`](Self::clock), and never before the job `started`), or it worked.
     pub fn answered(&mut self, account: Id, nothing: bool, started: f64) {
         if nothing {
-            self.book.failed(account, started);
+            self.book.failed(account, self.clock.max(started));
         } else {
             self.book.worked(account);
         }
@@ -253,7 +285,9 @@ impl Session {
         if self.driver.calendar.send_waits.contains(&account) {
             upload.ops.retain(|op| !op.mails_others());
         }
-        Some(upload).filter(|upload| !upload.ops.is_empty())
+        // (A category renamed here, for the events that aren't kept here, goes with them or by
+        // itself, #851.)
+        Some(upload).filter(|upload| !upload.ops.is_empty() || upload.rename.is_some())
     }
 
     /// The accounts whose calendar a Microsoft server keeps.
@@ -269,7 +303,9 @@ impl Session {
     /// Send/Receive (`directory`: a month back, a year ahead), or else `stretch`.
     pub fn calendar_asks(&self, account: Id, directory: bool, stretch: Option<(Timestamp, Timestamp)>) -> Vec<CalendarAsk> {
         let now = self.now();
-        let Some((from, to)) = (if directory { Some((now - WIDE_BEHIND, now + WIDE_AHEAD)) } else { stretch }) else { return Vec::new() };
+        let Some((from, to)) = (if directory { Some((now.saturating_sub(WIDE_BEHIND), now.saturating_add(WIDE_AHEAD))) } else { stretch }) else {
+            return Vec::new();
+        };
         // (And one that holds something which was sent and is yet to be seen on the server,
         // shown or not: an appointment that was just put into a calendar that isn't ticked.)
         let unseen = remote::unverified_calendars(self, account);

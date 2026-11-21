@@ -13,6 +13,7 @@
 //! window takes in what the server made of the changes (`sync.applyTaskChanges`) and then what it
 //! has (`sync.applyTasks`). The merge is the engine's ([`mailcraft_engine::cmd::tasks_remote`]).
 //!
+<<<<<<< HEAD
 //! **The permission.** Reading and changing the lists takes `Tasks.ReadWrite`. No sign-in page
 //! asks for it (a mail sign-in must never wait on it, a tenant may need an administrator for it): the
 //! first job finds its sign-in doesn't cover it ([`TasksResult::consent_needed`]), nothing of the
@@ -32,18 +33,30 @@
 
 use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
+=======
+//! **The permission.** Reading and changing the lists takes `Tasks.ReadWrite`. A new sign-in's
+//! page asks for it beside the rest, as an extra a page that won't have it is asked again without
+//! (#661). For an account that signed in before, the first job finds its sign-in doesn't cover it
+//! ([`TasksResult::consent_needed`]), nothing of the to-dos is read or sent, mail and calendar go
+//! on as ever, and the window asks the owner the one question of [`crate::server_sync`], then
+//! Microsoft's page, for the to-dos and the mailbox's settings together. File › Info says where it
+//! stands, with Ask again. A no that is not the owner's to change is said as for the Favorites
+//! ([`crate::favorites_sync::NEEDS_APPROVAL`]…).
+>>>>>>> upstream/main
 
 use mailcraft_engine::cmd::tasks_remote;
-use mailcraft_engine::sync_driver::{JobBook, Pacing, SETTLING_TRIES, Start};
+use mailcraft_engine::sync_driver::{TasksFacts, TasksQuestion};
+use mailcraft_host::tasks_job::TasksJobs;
 use mailcraft_model::{Id, LocalTasks};
-use serde_json::{Value, json};
+use serde_json::json;
 
 use crate::dialogs::{Dialog, Question};
-use crate::{MailApp, Tokens, now_ms};
+use crate::{MailApp, now_ms};
 
 pub(crate) use mailcraft_engine::sync_driver::{Permission, fingerprint};
 pub use mailcraft_host::tasks::{TasksJob, TasksResult};
 
+<<<<<<< HEAD
 /// Proddyt Labs fork: what a Google Tasks refresh token is kept as in the system's credential
 /// store (with the account's own name, [`MailApp::secret_key`]): never the mail sign-in's.
 pub(crate) const GOOGLE_TASKS_SECRET: &str = "googleTasks";
@@ -55,34 +68,26 @@ struct Begun {
     account: mailcraft_model::Account,
 }
 
+=======
+>>>>>>> upstream/main
 /// The state of the to-do jobs, in the window.
 #[derive(Default)]
 pub struct TaskSync {
-    /// The job under way: for which account, since when, the [`fingerprint`] of the refresh
-    /// token it was given, and the answer to come.
-    rx: Option<(Id, f64, u64, Begun, Receiver<TasksResult>)>,
-    /// When each account's to-dos were last asked for, the failures since the last answer, and
-    /// the changes waiting (the engine's bookkeeping: [`JobBook`]).
-    book: JobBook,
-    pub(crate) perm: HashMap<Id, Permission>,
-    /// The owner allowed the to-dos on Microsoft's page: how many refusals are still taken for
-    /// Microsoft not having taken it in yet, rather than for a no.
-    settling: HashMap<Id, u32>,
+    /// The job under way, kept by the host's driver of it ([`TasksJobs`]).
+    jobs: TasksJobs,
     /// The question about the to-dos that exist only here is on screen.
     pub(crate) offer_open: bool,
-    /// How many changes wait per account, worked out for the mailbox as of this revision (every
-    /// frame asks; the work is done again only when the mailbox changed).
-    ready: Option<(u64, HashMap<Id, usize>)>,
 }
 
 impl TaskSync {
     /// Whether a job is in flight.
     pub fn busy(&self) -> bool {
-        self.rx.is_some()
+        self.jobs.busy()
     }
 }
 
 impl MailApp {
+<<<<<<< HEAD
     /// Whether the to-dos of `account` wait for the owner's permission, or for a new sign-in.
     fn tasks_blocked(&self, account: Id) -> bool {
         let refresh = if tasks_remote::keeps_google_tasks(&self.session.mailbox, account) {
@@ -104,42 +109,18 @@ impl MailApp {
         kept.or_else(|| self.remembered("refresh", account)).filter(|r| !r.is_empty())
     }
 
+=======
+>>>>>>> upstream/main
     /// Look whether any account's to-dos are due, and start a job when they are. Called every
-    /// frame. (Public for a host's tests, which have no window.)
+    /// frame. (Public for a host's tests, which have no window.) What is due is the engine's to
+    /// say ([`mailcraft_engine::Session::tasks_due`]); this starts the job on the host.
     pub fn tasks_tick_at(&mut self, now: f64) -> bool {
+        self.session.driver.tasks.clock = now;
         self.tasks_ask_tick();
-        if !self.auto_sync || self.services.graph_tasks.is_none() || self.tasks.rx.is_some() {
-            return false;
-        }
-        // One thing at a time: the calendar's job, a Send/Receive and a sign-in go first.
-        if self.job_busy().blocks(Start::Tasks) {
-            return false;
-        }
-        for account in tasks_remote::task_accounts(&self.session.mailbox) {
-            if self.tasks_blocked(account) {
-                continue;
-            }
-            if matches!(self.tasks.perm.get(&account), Some(Permission::SignInOver(_))) {
-                // Signed in again since (for mail, say): a job finds out where the to-dos stand.
-                self.tasks.perm.remove(&account);
-            }
-            let rev = self.session.rev();
-            if self.tasks.ready.as_ref().is_none_or(|(at, _)| *at != rev) {
-                self.tasks.ready = Some((rev, HashMap::new()));
-            }
-            let ready = match self.tasks.ready.as_ref().and_then(|(_, m)| m.get(&account).copied()) {
-                Some(n) => n,
-                None => {
-                    let n = tasks_remote::tasks_waiting(&self.session.mailbox, account);
-                    if let Some((_, m)) = &mut self.tasks.ready {
-                        m.insert(account, n);
-                    }
-                    n
-                }
-            };
-            if !self.tasks.book.due(&Pacing::TASKS, account, ready, now) {
-                continue;
-            }
+        let facts = TasksFacts { reachable: self.services.graph_tasks.is_some(), running: self.tasks.busy(), busy: self.job_busy() };
+        let tokens = &self.tokens;
+        let due = self.session.tasks_due(&facts, |account| tokens.get(&account).map(|t| t.refresh.clone()), now);
+        for account in due {
             if self.start_tasks_job(account, now) {
                 return true;
             }
@@ -149,14 +130,18 @@ impl MailApp {
 
     pub(crate) fn tasks_tick(&mut self, ctx: &egui::Context) {
         self.tasks_tick_at(now_ms());
-        if self.tasks.rx.is_some() {
+        if self.tasks.busy() {
             ctx.request_repaint_after(std::time::Duration::from_millis(250));
-        } else if self.services.graph_tasks.is_some() && self.auto_sync && !tasks_remote::task_accounts(&self.session.mailbox).is_empty() {
+        } else if self.services.graph_tasks.is_some()
+            && self.session.driver.auto_sync()
+            && !tasks_remote::task_accounts(&self.session.mailbox).is_empty()
+        {
             ctx.request_repaint_after(std::time::Duration::from_secs(5));
         }
     }
 
     fn start_tasks_job(&mut self, account: Id, now: f64) -> bool {
+<<<<<<< HEAD
         let Some(owner) = self.session.mailbox.account(account).cloned() else { return false };
         // (Google Tasks: Google's registration and the account's own sign-in for the tasks.)
         let (oauth, google_client_secret) = if owner.keeps_google_tasks() {
@@ -186,20 +171,35 @@ impl MailApp {
         self.tasks.rx = Some((account, now, given, begun, rx));
         self.tasks.book.started(account, now);
         true
+=======
+        let Some(owner) = self.session.mailbox.account(account).filter(|a| a.oauth.is_some()).map(|a| a.id) else { return false };
+        let kept = self.tokens.get(&account).map(|t| t.refresh.clone()).filter(|r| !r.is_empty());
+        let refresh = kept.or_else(|| self.remembered("refresh", owner));
+        let offline = self.offline();
+        let ids = mailcraft_engine::sync_driver::ClientIds {
+            microsoft_chosen: &self.ui.microsoft_client_id,
+            microsoft_built_in: &self.services.microsoft_client_id,
+            google_chosen: &self.ui.google_client_id,
+            google_built_in: &self.services.google_client_id,
+        };
+        let graph = self.services.graph_tasks.as_ref().filter(|_| !offline);
+        // What the job is handed, the delete marked as gone and the engine told are the host's.
+        let oauth = |oauth| mailcraft_engine::sync_driver::effective_oauth(oauth, &ids);
+        self.tasks.jobs.start(&mut self.session, account, |_| refresh, oauth, now, |job| graph.map(|graph| graph(job)))
+>>>>>>> upstream/main
     }
 
     /// The job answered: keep the refresh token, take in what the server made of the changes, and
     /// what it has. (Public for a host's tests.)
     pub fn poll_tasks(&mut self) {
-        let Some((account, started, given, begun, rx)) = &self.tasks.rx else { return };
-        let (account, started, given) = (*account, *started, *given);
         // For a mailbox that has been closed since: its ids may name other accounts and tasks in
         // this one, and the answer is nobody's (AU3-08).
-        if begun.opening != self.session.openings() {
+        if self.tasks.jobs.stale(&self.session) {
             log::info!("tasks: the answer is for a mailbox that is no longer open; let go of");
             self.tasks = TaskSync::default();
             return;
         }
+<<<<<<< HEAD
         let ran_for = begun.account.clone();
         let google = ran_for.keeps_google_tasks();
         let result = match rx.try_recv() {
@@ -217,6 +217,21 @@ impl MailApp {
         self.tasks.rx = None;
         let mut errors = result.errors;
         if let Some(tokens) = &result.tokens
+=======
+        let lang = crate::i18n::current();
+        let Some(answer) = self.tasks.jobs.poll(&mut self.session, lang) else { return };
+        let account = answer.account;
+        let mut errors = answer.errors;
+        if answer.stopped_early {
+            errors.insert(0, tl!("The to-dos couldn't be kept in step: the job stopped unexpectedly").to_string());
+        }
+        // Somebody else's sign-in: the host refused the answer whole (nothing of it is taken in and
+        // its token is not kept); the owner is told who to sign in as, as for any sign-in (#103).
+        if let Some(foreign) = &answer.foreign {
+            errors.push(self.say_signed_in_as_other(account, &foreign.signed_in_as));
+        }
+        if let Some(tokens) = &answer.tokens
+>>>>>>> upstream/main
             && !tokens.refresh.is_empty()
             && !self.signed_in_as_other(account, tokens)
         {
@@ -231,6 +246,7 @@ impl MailApp {
                 }
             }
         }
+<<<<<<< HEAD
         let settling = self.tasks.settling.get(&account).copied().unwrap_or(0);
         if !result.consent_needed {
             self.tasks.settling.remove(&account);
@@ -289,6 +305,8 @@ impl MailApp {
         } else if !result.consent_needed && !result.sign_in_refused {
             self.tasks.book.failed(account, started);
         }
+=======
+>>>>>>> upstream/main
         self.note_problems_from("tasks", account, &errors, None, false);
     }
 
@@ -303,6 +321,7 @@ impl MailApp {
                 let _ = self.run("tasks.sendLocal", json!({"account": null}));
             }
         }
+<<<<<<< HEAD
         // A question that went away unanswered is not asked again by itself.
         let asking: Vec<Id> = self.tasks.perm.iter().filter(|(_, p)| **p == Permission::Asking).map(|(a, _)| *a).collect();
         let still = self.signing_in.is_some()
@@ -310,38 +329,39 @@ impl MailApp {
         if !still {
             for account in asking {
                 self.tasks.perm.insert(account, Permission::Declined);
+=======
+        // (A question that went away unanswered is a no: `sync_ask_tick`.)
+        self.sync_ask_tick();
+        // Who is asked next is the engine's to say.
+        match self.session.tasks_question(&self.ask_window()) {
+            Some(TasksQuestion::Permission(account)) => {
+                self.ask_sync(account);
+>>>>>>> upstream/main
             }
-        }
-        if self.dialog.is_some() || self.ui.backstage || self.signing_in.is_some() {
-            return;
-        }
-        let Some(account) = self.tasks.perm.iter().find(|(_, p)| **p == Permission::Needed).map(|(a, _)| *a) else {
-            if self.session.mailbox.local_tasks == LocalTasks::Unasked {
+            Some(TasksQuestion::LocalTasks) => {
                 self.offer_local_tasks();
             }
-            return;
-        };
-        self.ask_tasks(account);
+            None => {}
+        }
     }
 
     /// For a stand-in host (the screenshot example): every account that keeps to-dos has its To Do
     /// working, as if a job had read it.
     #[doc(hidden)]
     pub fn stand_in_tasks_work(&mut self) {
-        for account in tasks_remote::task_accounts(&self.session.mailbox) {
-            self.tasks.perm.insert(account, Permission::Given);
-        }
+        let accounts = tasks_remote::task_accounts(&self.session.mailbox);
+        self.session.driver.tasks.working_all(&accounts);
     }
 
     /// The accounts whose To Do is working (a job read it with the permission).
     fn tasks_working(&self) -> Vec<Id> {
-        tasks_remote::task_accounts(&self.session.mailbox).into_iter().filter(|a| self.tasks.perm.get(a) == Some(&Permission::Given)).collect()
+        self.session.tasks_working()
     }
 
     /// Whether a to-do put in `account` waits on this computer because a job found that To Do
     /// isn't allowed there (nothing is known of an account no job has looked at yet).
     pub(crate) fn tasks_held(&self, account: Id) -> bool {
-        !matches!(self.tasks.perm.get(&account), None | Some(Permission::Given))
+        self.session.tasks_held(account)
     }
 
     /// The first account added whose To Do works, wherever the owner moved it (#702): File › Info
@@ -395,7 +415,7 @@ impl MailApp {
             ask.more.push((label(*id), json!({"account": id})));
         }
         self.tasks.offer_open = true;
-        self.dialog = Some(Dialog::Confirm { command: "tasks.sendLocal".to_string(), params: json!({}), ask });
+        self.set_dialog(Some(Dialog::Confirm { command: "tasks.sendLocal".to_string(), params: json!({}), ask }));
         true
     }
 
@@ -410,6 +430,7 @@ impl MailApp {
         Some((line, true))
     }
 
+<<<<<<< HEAD
     /// The question before Microsoft's page: what is asked of the owner and why. (Google's, for an
     /// account linked to Google Tasks: [`MailApp::ask_google_tasks`].)
     pub(crate) fn ask_tasks(&mut self, account: Id) -> bool {
@@ -432,83 +453,54 @@ impl MailApp {
             note: None,
             cancel: None,
             tick: None,
+=======
+    /// The one question is put ([`crate::server_sync`]): the to-dos that wait for it are being
+    /// asked about.
+    pub(crate) fn tasks_sync_asking(&mut self, account: Id) {
+        if matches!(self.session.driver.tasks.perm.get(&account), Some(Permission::Needed | Permission::Declined | Permission::Refused(_))) {
+            self.session.driver.tasks.perm.insert(account, Permission::Asking);
+        }
+    }
+
+    /// The one question went away unanswered: the to-dos stay here, and nobody is asked again by
+    /// itself (File › Info has Ask again).
+    pub(crate) fn tasks_sync_not_now(&mut self, account: Id) {
+        if matches!(self.session.driver.tasks.perm.get(&account), Some(Permission::Needed | Permission::Asking)) {
+            self.session.driver.tasks.perm.insert(account, Permission::Declined);
+        }
+    }
+
+    /// The page signed in somebody else: the to-dos wait as they did.
+    pub(crate) fn tasks_sync_waits(&mut self, account: Id) {
+        if self.session.driver.tasks.perm.get(&account) == Some(&Permission::Asking) {
+            self.session.driver.tasks.perm.insert(account, Permission::Needed);
+        }
+    }
+
+    /// Asked, and no: why, in a few words.
+    pub(crate) fn tasks_sync_refused(&mut self, account: Id, why: &str) {
+        if matches!(self.session.driver.tasks.perm.get(&account), Some(Permission::Needed | Permission::Asking | Permission::Declined)) {
+            self.session.driver.tasks.perm.insert(account, Permission::Refused(why.to_string()));
+        }
+    }
+
+    /// The owner allowed it on Microsoft's page: the next job finds out, and a refusal right after
+    /// is taken for Microsoft not having taken it in yet (#491).
+    pub(crate) fn tasks_allowed(&mut self, account: Id) {
+        self.session.driver.tasks.allowed(account);
+    }
+
+    /// The to-dos' part of File › Info's line about keeping in step with Outlook.
+    pub(crate) fn tasks_sync_part(&self, account: Id) -> Option<(String, bool, crate::server_sync::Perm)> {
+        use crate::server_sync::Perm;
+        let (line, again) = self.tasks_line(account)?;
+        let perm = match self.session.driver.tasks.perm.get(&account) {
+            Some(Permission::Asking) => Perm::Asking,
+            Some(Permission::Given) | None => Perm::Fine,
+            Some(_) => Perm::Waits,
+>>>>>>> upstream/main
         };
-        self.tasks.perm.insert(account, Permission::Asking);
-        self.dialog = Some(Dialog::Confirm { command: "ui.allowTasks".to_string(), params: json!({"account": account}), ask });
-        true
-    }
-
-    /// File › Info's "Ask again".
-    pub(crate) fn ask_tasks_again(&mut self, account: Id) {
-        if self.dialog.is_none() && self.signing_in.is_none() {
-            self.ask_tasks(account);
-        }
-    }
-
-    /// `ui.allowTasks`: Microsoft's page, for the to-dos too, because the owner said go ahead.
-    pub(crate) fn begin_tasks_sign_in(&mut self, account: Id) -> Result<Value, String> {
-        let owner = self.session.mailbox.account(account).filter(|a| a.oauth.is_some() && !a.is_shared()).cloned();
-        let owner = owner.ok_or_else(|| tl!("This account has no sign-in with Microsoft").to_string())?;
-        let oauth = owner.oauth.clone().ok_or_else(|| tl!("This account has no sign-in with Microsoft").to_string())?;
-        self.tasks_next = true;
-        let begun = self.begin_sign_in(owner.id, oauth, &owner.email, String::new(), false, true);
-        self.tasks_next = false;
-        if let Err(e) = begun {
-            self.tasks.perm.insert(account, Permission::Needed);
-            return Err(e);
-        }
-        self.tasks.perm.insert(account, Permission::Asking);
-        self.session.sync_status =
-            tl!("Allow MailCraft to keep your tasks in step with Microsoft To Do on the page that opened in your browser…").to_string();
-        Ok(json!({"pending": "signIn", "account": owner.id}))
-    }
-
-    /// The owner answered on Microsoft's page about to-dos: with the tokens, the to-dos are kept
-    /// in step at once; without, why not is said.
-    pub(crate) fn tasks_signed_in(&mut self, account: Id, answer: Result<Tokens, String>) {
-        use crate::approval::NO_BROWSER;
-        use crate::favorites_sync::{NEEDS_APPROVAL, REFUSED_BY_ORGANISATION, REFUSED_FOR_ACCOUNT};
-        self.session.sync_status.clear();
-        match answer {
-            // (Somebody else's tokens are neither used nor remembered, #103.)
-            Ok(tokens) if self.signed_in_as_other(account, &tokens) => {
-                self.tasks.perm.insert(account, Permission::Needed);
-            }
-            Ok(tokens) => {
-                if !tokens.refresh.is_empty() {
-                    self.remember("refresh", account, &tokens.refresh);
-                    if let Some(kept) = self.tokens.get_mut(&account) {
-                        kept.refresh = tokens.refresh.clone();
-                    }
-                }
-                // Allowed, as far as is known: the next job finds out.
-                log::info!("tasks, account {account}: the owner allowed to-dos; the next job finds out");
-                self.tasks.perm.remove(&account);
-                self.tasks.settling.insert(account, SETTLING_TRIES);
-                self.tasks.book.worked(account);
-                self.tasks.book.forget_checked(account);
-            }
-            Err(e) if e == NEEDS_APPROVAL => {
-                let said = tl!("Your organisation's administrator has to approve keeping tasks in step with Microsoft To Do once: File › Info");
-                self.tasks.perm.insert(account, Permission::Refused(said.to_string()));
-                self.status(said);
-                let _ = self.run("ui.approvalHelp", json!({"account": account}));
-            }
-            Err(e) if e == REFUSED_BY_ORGANISATION || e == REFUSED_FOR_ACCOUNT => {
-                let said = tl!("Your organisation doesn't allow MailCraft to keep tasks in step with Microsoft To Do");
-                self.tasks.perm.insert(account, Permission::Refused(said.to_string()));
-                self.status(said);
-            }
-            Err(e) if e == NO_BROWSER => {
-                self.tasks.perm.insert(account, Permission::Declined);
-                self.status(crate::i18n::fmt(tl!("Tasks stay on this computer for now: {error}"), &[("error", &e)]));
-            }
-            Err(e) => {
-                let said = crate::i18n::fmt(tl!("Tasks weren't allowed to be kept in step: {error}"), &[("error", &e)]);
-                self.tasks.perm.insert(account, Permission::Refused(said.clone()));
-                self.status(said);
-            }
-        }
+        Some((line, again, perm))
     }
 
     /// What File › Info says under an account's card about its tasks, and whether there is a way
@@ -518,16 +510,21 @@ impl MailApp {
         if !tasks_remote::task_accounts(&self.session.mailbox).contains(&account) {
             return None;
         }
+<<<<<<< HEAD
         if tasks_remote::keeps_google_tasks(&self.session.mailbox, account) {
             return Some(self.google_tasks_line(account));
         }
         Some(match self.tasks.perm.get(&account) {
+=======
+        Some(match self.session.driver.tasks.perm.get(&account) {
+>>>>>>> upstream/main
             Some(Permission::Given) => (tl!("Tasks: kept in step with Microsoft To Do").to_string(), false),
             Some(Permission::Needed) => (tl!("Tasks: waiting for your permission").to_string(), true),
             Some(Permission::Asking) => (tl!("Tasks: asking for your permission…").to_string(), false),
-            Some(Permission::Declined) => (tl!("Tasks: kept on this computer only (not allowed yet)").to_string(), true),
+            Some(Permission::Declined | Permission::Denied) => (tl!("Tasks: kept on this computer only (not allowed yet)").to_string(), true),
             Some(Permission::Refused(why)) => {
-                (crate::i18n::fmt(tl!("Tasks: not allowed ({why})"), &[("why", crate::forms::kit::shown(why, 90).as_str())]), true)
+                let why = crate::forms::kit::shown(why, crate::server_sync::REASON_SHOWN);
+                (crate::i18n::fmt(tl!("Tasks: not allowed ({why})"), &[("why", why.as_str())]), true)
             }
             Some(Permission::SignInOver(_)) => (tl!("Tasks: Microsoft no longer takes the sign-in").to_string(), true),
             None => (tl!("Tasks: not asked yet").to_string(), false),
