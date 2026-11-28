@@ -5,7 +5,9 @@
 //!
 //! The receiving server puts its own header on top; the ones below it were written before, by
 //! whoever, and a sender can write any of them. So only the topmost one is read, and only when
-//! the server of the account the message is in wrote it ([`from_own_server`]); on Exchange
+//! the server of the account the message is in wrote it ([`own_results`]: a provider's that
+//! writes one on every message, or one with the server's id above the hop at which it took the
+//! mail in, since a server that writes none leaves a sender's on top); on Exchange
 //! Online, which writes more of its own above it, the one with its id above the hop at which it
 //! took the mail in from the internet ([`exchange_online_results`]). MailCraft makes
 //! no checks of its own (no DNS, no DKIM, no SPF): a server that says nothing says nothing.
@@ -16,7 +18,9 @@
 //!   the mail came from inside the owner's own organisation. What the window lets a remembered
 //!   sender's pictures come by, and a sender's own picture.
 //! - [`failed_check`]: the server says it failed DMARC, or, when the server gives no DMARC
-//!   verdict at all, SPF for the sender's domain. A **sender warning**.
+//!   verdict at all, SPF for the sender's domain. A **sender warning**. Not when Exchange Online
+//!   says it didn't enforce DMARC because the mail came through another service first
+//!   (`compauth=none reason=905`), unless the sender is at the account's own domain.
 //!
 //! Everything is bounded: so many headers looked through, so many characters of the value, so
 //! many clauses.
@@ -28,6 +32,9 @@ use crate::{Account, AccountKind, Message, provider, sender_warnings};
 pub(crate) const MAX_HEADERS_READ: usize = 2_000;
 const MAX_TOKENS: usize = 200;
 const MAX_HEADER_CHARS: usize = 4_000;
+/// The most hops to the mailbox store looked past, above the one at which a server took mail in:
+/// a store or two in a real system, and each is read whole.
+const MAX_DELIVERY_HOPS: usize = 8;
 /// The header Exchange writes on every message it delivers, saying whether the sender signed in
 /// inside the organisation (`Internal`) or came from outside (`Anonymous`).
 pub const AUTH_AS: &str = "X-MS-Exchange-Organization-AuthAs";
@@ -41,9 +48,9 @@ pub const MAX_AUTH_AS: usize = 16;
 /// them, and no receiving server stamps a copy MailCraft puts there itself, so the copy would be
 /// vouched for by them ([`internal`], [`vouched`]).
 pub fn forget_stamps(m: &mut Message) {
-    m.headers.retain(|(name, _)| {
-        !name.eq_ignore_ascii_case(AUTH_AS) && !name.eq_ignore_ascii_case(RESULTS) && !name.eq_ignore_ascii_case("ARC-Authentication-Results")
-    });
+    m.remove_header(AUTH_AS);
+    m.remove_header(RESULTS);
+    m.remove_header("ARC-Authentication-Results");
 }
 
 /// The header a receiving server writes its verdict in (RFC 8601).
@@ -137,6 +144,12 @@ fn received_by(value: &str) -> Option<String> {
     domain(words.next()?.trim_end_matches(';'))
 }
 
+/// Whether a `Received` header's value is the hop at which Exchange Online took the mail in from
+/// the internet ([`EXCHANGE_ONLINE_EDGE`]): such a hop stays on the message (`crate::headers`).
+pub(crate) fn is_exchange_online_edge(value: &str) -> bool {
+    received_by(value).is_some_and(|host| host.ends_with(EXCHANGE_ONLINE_EDGE))
+}
+
 /// The `Authentication-Results` headers Exchange Online wrote of `m` as it took it in from the
 /// internet, its own first and the ones below it after: the topmost header with its authserv-id
 /// ([`EXCHANGE_ONLINE_ID`]), or with none (it starts with a result), that lies above the topmost
@@ -159,27 +172,131 @@ fn exchange_online_results(m: &Message, for_failure: bool) -> Option<Vec<&str>> 
             return None;
         }
     }
-    let edge = headers.iter().position(|(name, value)| {
-        name.eq_ignore_ascii_case("Received") && received_by(value).is_some_and(|host| host.ends_with(EXCHANGE_ONLINE_EDGE))
-    })?;
+    let edge = headers.iter().position(|(name, value)| name.eq_ignore_ascii_case("Received") && is_exchange_online_edge(value))?;
     let own = headers.get(..edge)?.iter().position(|(name, value)| {
         name.eq_ignore_ascii_case(RESULTS) && (without_id(value) || authserv_id(value).is_some_and(|id| id == EXCHANGE_ONLINE_ID))
     })?;
     Some(headers.get(own..)?.iter().filter(|(name, _)| name.eq_ignore_ascii_case(RESULTS)).map(|(_, value)| value.as_str()).collect())
 }
 
-/// Whether the topmost `Authentication-Results` header of `m` was written by `account`'s own
-/// server, for an account not on Exchange Online ([`exchange_online_results`]): one whose
-/// authserv-id is a known id of its IMAP host's provider (`provider::authserv_ids`), or the IMAP
-/// host's domain one label up, or a name under that. Anything else is not known to be the
-/// account's server's.
-fn from_own_server(account: &Account, value: &str) -> bool {
+/// Whether the topmost `Authentication-Results` value of a message, `value`, carries the id of a
+/// provider that writes its own on every message it takes in, on top of any that came with it
+/// (`provider::authserv_ids` of `account`'s IMAP host): its place says nothing more, since Gmail,
+/// for one, writes it below the hop at which it took the mail in.
+fn from_stamping_provider(account: &Account, value: &str) -> bool {
     let (Some(host), Some(id)) = (incoming_host(account), authserv_id(value)) else { return false };
-    if provider::authserv_ids(&host).contains(&id.as_str()) {
-        return true;
-    }
+    provider::authserv_ids(&host).contains(&id.as_str())
+}
+
+/// Whether `value` carries the id of `account`'s own server by its name alone: the IMAP host's
+/// domain one label up, or a name under that. Such a server may write no verdict at all, and
+/// then the topmost header is one the sender wrote with its id (RFC 8601, 7.1), so for a verdict
+/// that vouches its place must say it is the server's too ([`above_intake`]).
+fn from_own_domain(account: &Account, value: &str) -> bool {
+    let (Some(host), Some(id)) = (incoming_host(account), authserv_id(value)) else { return false };
     let Some((_, rest)) = host.split_once('.') else { return false };
     rest.split('.').count() >= 2 && !provider::is_public_suffix(rest) && (id == rest || id.strip_suffix(rest).is_some_and(|head| head.ends_with('.')))
+}
+
+/// Whether the topmost `Authentication-Results` header of `m` lies above the hop at which the
+/// receiving server took `m` in: the topmost `Received` that is not a hop to the mailbox store
+/// ([`is_delivery_hop`]), with one there below it. Every `Received` is written on top of the ones
+/// before it (RFC 5322, 3.6.7), so nothing a sender wrote lies above that hop. A server that
+/// writes its verdict below it is not believed: its verdict can't be told from a sender's. This
+/// rests on the server keeping its own hop: one that drops it and keeps only a hop to the store
+/// can't be told from a message whose sender wrote the hop below (a server that drops every
+/// `Received` as it takes mail in drops the sender's too, and its message has none to go by).
+/// A hop at Exchange Online's edge ([`is_exchange_online_edge`]) is never that hop: the account
+/// is not on Exchange Online (else [`exchange_online_results`] reads it), so a server of its own
+/// behind that edge writes its hop above it, and a version before this one kept such a hop on
+/// the message and put the server's own in the block, where nothing reads it. Past
+/// [`MAX_DELIVERY_HOPS`] hops to the store nothing more is read: each is read whole. Mail this
+/// version did not split ([`Message::hops_kept`]) is never believed: a version before may have
+/// put the server's own hop in the block and left a sender's on the message (one too long for
+/// its block, for one), and which it did can't be told.
+fn above_intake(m: &Message) -> bool {
+    if !m.hops_kept {
+        return false;
+    }
+    let (mut seen, mut stores) = (false, 0usize);
+    for (name, value) in m.headers.iter().take(MAX_HEADERS_READ) {
+        if name.eq_ignore_ascii_case(RESULTS) {
+            seen = true;
+        } else if name.eq_ignore_ascii_case("Received") {
+            if is_exchange_online_edge(value) {
+                return false;
+            }
+            if !is_delivery_hop(value) {
+                return seen;
+            }
+            stores = stores.saturating_add(1);
+            if stores > MAX_DELIVERY_HOPS {
+                return false;
+            }
+        }
+    }
+    false
+}
+
+/// Whether a `Received` value is a hop to the mailbox store inside the receiving system, in the
+/// one plain shape a store writes it: `from <host> [([<address>])] [(using …)] by <host> with
+/// LMTP…` (RFC 2033; LMTPA, LMTPS, LMTPSA: RFC 3848), its only `by` and its only `with` outside
+/// that comment (which holds no `by` either), read whole. The words up to `with` are the store's
+/// own (a sender's HELO is one word and stands where a host does, and its envelope address comes
+/// after), so no hop at which the mail came in from outside, which says `SMTP` or `ESMTP…` there,
+/// is ever taken for one. A store that names its software there (Cyrus's `by store (Cyrus …)`) or
+/// took the mail over a socket (`([unix socket])`) is not: its mail never vouches.
+pub(crate) fn is_delivery_hop(value: &str) -> bool {
+    if value.chars().nth(MAX_HEADER_CHARS).is_some() {
+        return false;
+    }
+    let words: Vec<&str> = value.split_whitespace().collect();
+    let host = |word: &str| !word.contains('@') && domain(word).is_some();
+    let address = |word: &str| {
+        word.strip_prefix("([")
+            .and_then(|rest| rest.strip_suffix("])"))
+            .is_some_and(|ip| !ip.is_empty() && ip.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | ':')))
+    };
+    let rest = match words.as_slice() {
+        [from, name, ip, rest @ ..] if from.eq_ignore_ascii_case("from") && host(name) && address(ip) => rest,
+        [from, name, rest @ ..] if from.eq_ignore_ascii_case("from") && host(name) => rest,
+        _ => return false,
+    };
+    let head = words.len().saturating_sub(rest.len());
+    // A store that took the mail over TLS may say so before `by` (`(using TLSv1.3 with cipher …
+    // (256/256 bits))`): that comment, nested, is skipped whole.
+    let mut tls = 0usize;
+    if rest.first().is_some_and(|word| word.starts_with("(using")) {
+        let mut depth = 0usize;
+        for word in rest {
+            tls = tls.saturating_add(1);
+            for c in word.chars() {
+                match c {
+                    '(' => depth = depth.saturating_add(1),
+                    ')' => depth = depth.saturating_sub(1),
+                    _ => {}
+                }
+            }
+            if depth == 0 {
+                break;
+            }
+        }
+        if depth > 0 {
+            return false;
+        }
+    }
+    let Some(rest) = rest.get(tls..) else { return false };
+    let once = |keyword: &str| words.iter().take(head).chain(rest).filter(|word| word.eq_ignore_ascii_case(keyword)).count() == 1;
+    // No TLS comment holds a `by`, a quote or an address: one that does was opened by a sender
+    // (its HELO) to hide the server's own `by … with` and show its own, written further on. So
+    // `by` is counted over every word, the comment's too.
+    let comment = words.get(head..head.saturating_add(tls)).unwrap_or_default();
+    comment.iter().all(|word| !word.contains(['"', '@', '<', '>']))
+        && words.iter().filter(|word| word.eq_ignore_ascii_case("by")).count() == 1
+        && once("by")
+        && once("with")
+        && matches!(rest, [by, name, with, protocol, ..] if by.eq_ignore_ascii_case("by") && host(name) && with.eq_ignore_ascii_case("with")
+            && ["lmtp", "lmtpa", "lmtps", "lmtpsa"].contains(&protocol.trim_end_matches(';').to_ascii_lowercase().as_str()))
 }
 
 /// Whether `account`'s mail is on Exchange Online: a Microsoft account, or one whose IMAP host is
@@ -208,7 +325,7 @@ fn internal(account: Option<&Account>, m: &Message) -> bool {
         return false;
     }
     let mut stamps = 0usize;
-    for (_, value) in m.headers.iter().take(MAX_HEADERS_READ).filter(|(name, _)| name.eq_ignore_ascii_case(AUTH_AS)) {
+    for value in m.header_values(AUTH_AS) {
         if !value.trim().eq_ignore_ascii_case("Internal") {
             return false;
         }
@@ -298,9 +415,13 @@ fn clauses(value: &str) -> (Vec<Vec<String>>, bool) {
 /// The `Authentication-Results` headers of `m`, the server's own first, when `m` is on the server
 /// (it has a UID there, or the server's own record of it: mail brought in from a file has the
 /// file's word and nothing else) and the server of `account` wrote one: on Exchange Online the
-/// one [`exchange_online_results`] finds, elsewhere the topmost, when [`from_own_server`] says it
-/// is the server's: the receiving server puts its own on top, and the ones below were written
-/// before it. `None` otherwise: nothing to go by.
+/// one [`exchange_online_results`] finds, elsewhere the topmost, when it is the server's: the
+/// receiving server puts its own on top, and the ones below were written before it. The topmost
+/// is the server's when it carries the id of a provider that always writes one
+/// ([`from_stamping_provider`]), or the server's own id ([`from_own_domain`]) and, for a verdict
+/// that vouches (`for_failure` false), lies above the hop at which the server took the mail in
+/// ([`above_intake`]); a failure is read without that, since a forged one can only add a
+/// warning. `None` otherwise: nothing to go by.
 fn own_results<'a>(account: Option<&Account>, m: &'a Message, for_failure: bool) -> Option<Vec<&'a str>> {
     if m.uid == 0 && m.server.is_none() {
         return None;
@@ -309,9 +430,10 @@ fn own_results<'a>(account: Option<&Account>, m: &'a Message, for_failure: bool)
     if on_exchange_online(account) {
         return exchange_online_results(m, for_failure);
     }
-    let results: Vec<&str> =
-        m.headers.iter().take(MAX_HEADERS_READ).filter(|(name, _)| name.eq_ignore_ascii_case(RESULTS)).map(|(_, v)| v.as_str()).collect();
-    from_own_server(account, results.first()?).then_some(results)
+    let results: Vec<&str> = m.header_values(RESULTS).collect();
+    let top = results.first()?;
+    let own = from_stamping_provider(account, top) || (from_own_domain(account, top) && (for_failure || above_intake(m)));
+    own.then_some(results)
 }
 
 /// The clauses of the topmost `Authentication-Results` header of `m`, as [`own_results`] has it.
@@ -379,6 +501,74 @@ pub fn vouched(account: Option<&Account>, m: &Message) -> bool {
     })
 }
 
+/// The DKIM signatures the account's own server says passed: each `dkim=pass` clause of its
+/// topmost own `Authentication-Results`, as its domain (`header.d`, or the domain of its
+/// `header.i`) and the start of the signature it is about (`header.b`, RFC 6008), when the
+/// server wrote it. Empty when the server said nothing, or wrote no such clause.
+pub(crate) fn dkim_passed(account: Option<&Account>, m: &Message) -> Vec<(String, Option<String>)> {
+    let Some(value) = own_results(account, m, false).and_then(|results| results.first().copied()) else { return Vec::new() };
+    let (parsed, _) = clauses(value);
+    parsed
+        .iter()
+        .filter(|words| words.first().is_some_and(|result| result.eq_ignore_ascii_case("dkim=pass")))
+        .filter_map(|words| {
+            let named = |wanted: &str| {
+                words.iter().skip(1).find_map(|word| {
+                    word.split_once('=').filter(|(key, _)| key.eq_ignore_ascii_case(wanted)).map(|(_, v)| v.trim_matches('"').to_string())
+                })
+            };
+            let signer = named("header.d").or_else(|| named("header.i").and_then(|i| i.rsplit_once('@').map(|(_, d)| d.to_string())))?;
+            Some((domain(&signer)?, named("header.b").filter(|b| !b.is_empty())))
+        })
+        .collect()
+}
+
+/// What the account's own server says of a message's checks, short and safe to hand to an agent
+/// (#1472): each method's result as a lower-case word (`pass`, `fail`, `softfail`, `none` …) and,
+/// when a signature passed, whose domain signed it. A word the server writes that is not a plain
+/// short one is left out, never passed on.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Summary {
+    pub spf: Option<String>,
+    pub dkim: Option<String>,
+    pub dkim_domain: Option<String>,
+    pub dmarc: Option<String>,
+}
+
+/// Longest result word and longest signer's domain a [`Summary`] carries.
+const MAX_RESULT_WORD: usize = 16;
+const MAX_SUMMARY_DOMAIN: usize = 100;
+
+/// A result word as it goes into a [`Summary`]: letters and dashes, in lower case, at most
+/// [`MAX_RESULT_WORD`] of them; `None` for anything else (a result is the first thing a clause
+/// says, but a sender can put anything into a value).
+fn result_word(word: &str) -> Option<String> {
+    let ok = !word.is_empty() && word.len() <= MAX_RESULT_WORD && word.chars().all(|c| c.is_ascii_alphabetic() || c == '-');
+    ok.then(|| word.to_ascii_lowercase())
+}
+
+/// What the server of `account` says of `m`'s SPF, DKIM and DMARC checks: read from the one
+/// `Authentication-Results` header it wrote ([`own_results`]: the topmost, and only when it is the
+/// server's), never from a lower one, which the sender could have written. `None` when there is
+/// no such header or it says nothing of the three: nothing is guessed.
+pub fn summary(account: Option<&Account>, m: &Message) -> Option<Summary> {
+    let value = own_results(account, m, false)?.first().copied()?;
+    let (parsed, _) = clauses(value);
+    let first_of =
+        |wanted: &str| parsed.iter().filter_map(|words| result(words)).find(|(method, _)| method == wanted).and_then(|(_, word)| result_word(&word));
+    // Whether a signature passed does not depend on how long its domain is: only the domain shown
+    // is left out when it is over the cap.
+    let signed = dkim_passed(account, m).into_iter().next().map(|(d, _)| d);
+    let found = Summary {
+        spf: first_of("spf"),
+        // A signature that passed is the news, whatever order the server listed them in.
+        dkim: if signed.is_some() { Some("pass".into()) } else { first_of("dkim") },
+        dkim_domain: signed.filter(|d| d.len() <= MAX_SUMMARY_DOMAIN),
+        dmarc: first_of("dmarc"),
+    };
+    (found.spf.is_some() || found.dkim.is_some() || found.dmarc.is_some()).then_some(found)
+}
+
 /// Whether the `Authentication-Results` value `value` gives a DMARC verdict: a `dmarc` (or
 /// `compauth`) clause of any result, or a part not read ([`clauses`]) where one may stand.
 fn dmarc_verdict(value: &str) -> bool {
@@ -419,7 +609,10 @@ impl Failed {
 /// no `dmarc` clause at all, `spf=fail` for a `smtp.mailfrom` at the sender's domain or one under
 /// the domain it judged; a DMARC failure for a domain whose policy is `p=none` is
 /// [`Failed::DmarcPolicyNone`]. A server that says nothing, or says it of another domain, gives `None`,
-/// and so does Exchange Online's `compauth=pass` for the sender, which is its last word.
+/// and so does Exchange Online's `compauth=pass` for the sender, which is its last word, and its
+/// `compauth=none reason=905`, which says it didn't enforce DMARC because the mail came through
+/// another service first ([`complex_routing`]), for a sender outside the account's own domain
+/// ([`own_organisation`]).
 pub fn failed_check(account: Option<&Account>, m: &Message) -> Option<Failed> {
     let clauses = own_clauses(account, m)?;
     // Unlike `vouched`, any address is read: a sender whose name is written in other letters
@@ -429,8 +622,16 @@ pub fn failed_check(account: Option<&Account>, m: &Message) -> Option<Failed> {
     let judged =
         |words: &[String], key: &str| property(words, key).map(|v| sender_warnings::sender_domain(v).or_else(|| sender_warnings::normal_domain(v)));
     let of_sender = |words: &[String]| judged(words, "header.from").is_none_or(|j| j.is_some_and(|j| judged_for(&j, &sender_domain)));
-    // Exchange Online's composite verdict overrides a DMARC failure it chose to let through.
-    if clauses.iter().any(|words| result(words).is_some_and(|(method, outcome)| method == "compauth" && outcome == "pass") && of_sender(words)) {
+    // Exchange Online's composite verdict overrides a DMARC failure it chose to let through, and
+    // so does its word that it didn't enforce DMARC because of the route, but not for the owner's
+    // own domain: Exchange says that of everything a tenant behind a gateway gets, a spoof of a
+    // colleague sent straight to Microsoft 365 past the gateway among it.
+    let outside = !own_organisation(account, &sender_domain);
+    let routed = |words: &[String]| outside && complex_routing(words);
+    if clauses.iter().any(|words| {
+        result(words).is_some_and(|(method, outcome)| method == "compauth" && (outcome == "pass" || (outcome == "none" && routed(words))))
+            && of_sender(words)
+    }) {
         return None;
     }
     let mut dmarc_said = false;
@@ -452,6 +653,34 @@ pub fn failed_check(account: Option<&Account>, m: &Message) -> Option<Failed> {
             && judged(words, "smtp.mailfrom").flatten().is_some_and(|j| j == sender_domain || judged_for(&sender_domain, &j))
     });
     spf_fails.then_some(Failed::Spf)
+}
+
+/// Whether a `compauth` clause gives Exchange Online's reason `905`: it didn't enforce DMARC
+/// because of complex routing, which is what it says when the mail came through another service
+/// first (a filtering gateway in front of Microsoft 365, or an organisation's own server). Such a
+/// service sends from an address the sender's SPF doesn't name, and may change the message under
+/// the sender's signature (a rewritten link, a banner, a tag on the subject), so `dmarc` and
+/// `spf` fail for senders who are who they say. Exchange gives the code from how the tenant's
+/// mail is routed, not from the message: it says it too of mail sent straight to Microsoft 365
+/// past the gateway, which is why it doesn't count for the owner's own domain
+/// ([`own_organisation`]). Only that one code: the other codes of `compauth=none` (an
+/// administrator's allow list, among others) let mail by for reasons that say nothing of the
+/// checks, which then still stand.
+fn complex_routing(words: &[String]) -> bool {
+    property(words, "reason") == Some("905")
+}
+
+/// Whether `sender_domain` (as [`sender_warnings::sender_domain`] reads it) is of the
+/// organisation of `account`'s own address: its registrable part ([`sender_warnings::registrable`])
+/// is that of the account's domain, so `hr.lumen.example` and `lumen.example` are one, and
+/// `lumen.example.org` is not. The account's address is read as the sender's is: lower case,
+/// `xn--` labels as the letters they stand for, no dot at the end. No account, or no domain in
+/// its address, has no own domain. Another domain the organisation has, which the account's
+/// address isn't at, is not known to be its.
+fn own_organisation(account: Option<&Account>, sender_domain: &str) -> bool {
+    account
+        .and_then(|account| sender_warnings::sender_domain(&account.email))
+        .is_some_and(|own| sender_warnings::registrable(&own) == sender_warnings::registrable(sender_domain))
 }
 
 /// Whether a `dmarc` clause says the domain's policy is `none`: in the server's comment

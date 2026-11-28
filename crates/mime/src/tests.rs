@@ -61,11 +61,17 @@ fn expected(m: &Message, opts: &WriteOptions) -> Message {
     }
 }
 
+/// `m` without the lines of its header read into it ([`Message::read_header`]): those a writer
+/// writes (its Date, its MIME-Version, its own boundary) are its, not the message's.
+fn unread(m: Message) -> Message {
+    Message { read_header: String::new(), ..m }
+}
+
 /// Write, read back, and compare with what must come back.
 fn round_trip(m: &Message) {
     for opts in [WriteOptions::default(), WriteOptions { include_bcc: true, offset_minutes: -330 }] {
         let bytes = write(m, &opts);
-        assert_eq!(parse(&bytes), expected(m, &opts), "{}", String::from_utf8_lossy(&bytes));
+        assert_eq!(unread(parse(&bytes)), expected(m, &opts), "{}", String::from_utf8_lossy(&bytes));
         assert_eq!(write(m, &opts), bytes, "writing is deterministic");
         check_wire_format(&bytes);
     }
@@ -244,7 +250,7 @@ fn an_attached_message_round_trips() {
     round_trip(&m);
     // The same through an mbox, where the inner `From ` line is quoted and unquoted.
     let mbox = write_mbox(&[&m], &WriteOptions::default());
-    assert_eq!(parse_mbox(&mbox), [expected(&m, &WriteOptions::default())]);
+    assert_eq!(parse_mbox(&mbox).into_iter().map(unread).collect::<Vec<_>>(), [expected(&m, &WriteOptions::default())]);
 }
 
 #[test]
@@ -323,7 +329,7 @@ fn a_foreign_message_survives_reading_writing_and_reading() {
     assert_eq!((first.importance, first.read, first.categories.len(), first.headers.len()), (Importance::High, true, 2, 1));
     let opts = WriteOptions { include_bcc: true, offset_minutes: 120 };
     let second = parse(&write(&first, &opts));
-    assert_eq!(second, first);
+    assert_eq!(unread(second), unread(first));
 }
 
 #[test]
@@ -408,6 +414,25 @@ fn large_and_hostile_input_is_read_quickly() {
     let _ = parse(&m);
     let _ = parse_mbox(&b"From \r\n".repeat(100_000));
     let _ = parse_mbox(&b">From x 12:34\r\n\r\nFrom y 12:34\r\n".repeat(30_000));
+    let _ = crate::count_mbox(&b"From \r\n".repeat(100_000));
+}
+
+/// (#1401) The count asked about before an import is the count the import reads.
+#[test]
+fn an_mbox_is_counted_as_it_is_read() {
+    let messages: Vec<crate::Message> = (0..5)
+        .map(|i| {
+            let mut m = parse(format!("Subject: Plans {i}\r\nFrom: bo@example.org\r\n\r\nFrom the start\r\n").as_bytes());
+            m.message_id = format!("m{i}@example.org");
+            m
+        })
+        .collect();
+    let refs: Vec<&crate::Message> = messages.iter().collect();
+    let mbox = write_mbox(&refs, &WriteOptions::default());
+    assert_eq!(crate::count_mbox(&mbox), parse_mbox(&mbox).len());
+    assert_eq!(crate::count_mbox(&mbox), 5);
+    assert_eq!(crate::count_mbox(b""), 0);
+    assert_eq!(crate::count_mbox(b"Subject: no separator\r\n\r\nbody\r\n"), 1);
 }
 
 // ---- generators ----
@@ -512,11 +537,15 @@ fn message() -> impl Strategy<Value = Message> {
             flag,
             importance,
             read_receipt: false,
+            reaction: false,
             categories,
             answered,
             headers,
+            read_header: "X-Priority: 9 (not carried)\n".into(),
+            read_header_cut: false,
             fresh_stamps: false,
             draft: true,
+            headers_cut: false,
             original: None,
         },
     )
@@ -553,8 +582,12 @@ proptest! {
     #[test]
     fn any_message_reads_back_as_written(m in message(), opts in options()) {
         let bytes = write(&m, &opts);
-        let back = parse(&bytes);
+        let mut back = parse(&bytes);
         let want = expected(&m, &opts);
+        // The lines read into it are the writer's (its Date, its MIME-Version), never what the
+        // message kept of the header it came with.
+        prop_assert!(back.read_header.contains("MIME-Version: 1.0") && !back.read_header.contains("not carried"));
+        back.read_header.clear();
         // The fields one by one first, for a readable failure.
         prop_assert_eq!(&back.from, &want.from);
         prop_assert_eq!(&back.to, &want.to);
@@ -604,7 +637,7 @@ proptest! {
         let refs: Vec<&Message> = messages.iter().collect();
         let mbox = write_mbox(&refs, &opts);
         let want: Vec<Message> = messages.iter().map(|m| expected(m, &opts)).collect();
-        prop_assert_eq!(parse_mbox(&mbox), want);
+        prop_assert_eq!(parse_mbox(&mbox).into_iter().map(unread).collect::<Vec<_>>(), want);
     }
 
     #[test]
@@ -662,6 +695,42 @@ fn recipients_and_categories_are_capped_across_the_message() {
     assert_eq!(m.reply_to.len(), crate::MAX_RECIPIENTS);
 }
 
+/// What is left out past the caps is said on the message (`headers_cut`, #566), so that a rule
+/// doesn't read a field it never saw as not there; a message within them says nothing.
+#[test]
+fn a_message_says_when_header_fields_recipients_or_categories_were_left_out() {
+    let fields = |n: usize| (0..n).map(|i| format!("X-Trace-{i}: hop\r\n")).collect::<String>();
+    let message = |head: String| parse(format!("From: a@example.org\r\nSubject: s\r\n{head}\r\nbody\r\n").as_bytes());
+    assert!(!message(fields(200)).headers_cut);
+    assert!(message(fields(201)).headers_cut);
+    let to = |n: usize| format!("To: {}\r\n", (0..n).map(|i| format!("u{i}@example.org")).collect::<Vec<_>>().join(", "));
+    assert!(!message(to(crate::MAX_RECIPIENTS)).headers_cut);
+    assert!(message(to(crate::MAX_RECIPIENTS + 1)).headers_cut);
+    let keywords = |n: usize| format!("Keywords: {}\r\n", (0..n).map(|i| format!("k{i}")).collect::<Vec<_>>().join(","));
+    assert!(!message(keywords(crate::MAX_CATEGORIES)).headers_cut);
+    assert!(message(keywords(crate::MAX_CATEGORIES + 1)).headers_cut);
+}
+
+/// A Cc past the recipients kept after the To: the message says its header was cut, so that a
+/// rule that reads them can't tell, as for a To or a field count past what is kept. A header read
+/// into the message whole but past the 64 KB kept of it as it came says only that those lines were
+/// cut, which a header rule alone reads (#566).
+#[test]
+fn a_cc_past_the_room_left_is_said_cut_and_a_long_read_header_apart() {
+    let list = |n: usize| (0..n).map(|i| format!("c{i}@example.org")).collect::<Vec<_>>().join(", ");
+    let with_cc = |n: usize| parse(format!("From: a@example.org\r\nTo: b@example.org\r\nCc: {}\r\nSubject: s\r\n\r\nbody\r\n", list(n)).as_bytes());
+    // One in To leaves room for all but one in Cc.
+    let whole = with_cc(crate::MAX_RECIPIENTS - 1);
+    assert_eq!((whole.cc.len(), whole.headers_cut), (crate::MAX_RECIPIENTS - 1, false));
+    let cut = with_cc(crate::MAX_RECIPIENTS);
+    assert_eq!((cut.cc.len(), cut.headers_cut), (crate::MAX_RECIPIENTS - 1, true));
+    // A subject that the 64 KB of lines kept as they came can't hold.
+    let subject = |n: usize| parse(format!("From: a@example.org\r\nSubject: {}\r\n\r\nbody\r\n", "a".repeat(n)).as_bytes());
+    assert!(!subject(1_000).headers_cut && !subject(1_000).read_header_cut);
+    let long = subject(70_000);
+    assert!(!long.headers_cut && long.read_header_cut && long.subject.len() == 70_000);
+}
+
 #[test]
 fn a_header_block_keeps_a_bounded_number_of_bytes() {
     let mut raw = Vec::new();
@@ -688,6 +757,20 @@ fn an_mbox_is_read_one_message_at_a_time() {
 }
 
 proptest! {
+    /// (#1401) Any bytes: the count never panics, and is never fewer than the messages read.
+    #[test]
+    fn an_mbox_count_is_never_short_of_what_is_read(bytes in proptest::collection::vec(any::<u8>(), 0..4096)) {
+        prop_assert!(crate::count_mbox(&bytes) >= parse_mbox(&bytes).len());
+    }
+
+    /// (#1401) Messages written as an mbox are counted as many as they are.
+    #[test]
+    fn a_written_mbox_is_counted_whole(ms in proptest::collection::vec(message(), 0..8), opts in options()) {
+        let refs: Vec<&crate::Message> = ms.iter().collect();
+        let mbox = write_mbox(&refs, &opts);
+        prop_assert_eq!(crate::count_mbox(&mbox), parse_mbox(&mbox).len());
+    }
+
     #[test]
     fn list_headers_stay_under_the_caps(lines in proptest::collection::vec(("(To|Cc|Bcc|Reply-To|Keywords)", "[a-z@.,; <>]{0,3000}"), 0..60)) {
         let mut raw = String::new();

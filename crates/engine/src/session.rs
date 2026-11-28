@@ -21,6 +21,9 @@ use crate::{CmdError, Registry};
 /// Undo steps kept.
 const MAX_HISTORY: usize = 100;
 
+/// Most messages [`Session::keep_for_now`] holds on a device beyond its limits for a session.
+pub const MOST_KEPT_FOR_NOW: usize = 5_000;
+
 /// How long a search spends bringing the bodies of older mail into memory before it answers with
 /// what it has searched (and says what it hasn't).
 const SEARCH_TIME: std::time::Duration = std::time::Duration::from_secs(2);
@@ -49,6 +52,8 @@ pub enum Part {
     Attachment(usize),
     /// The bytes a Digitally signed or Encrypted message came as (`Message::original`, #30).
     Original,
+    /// The header lines nothing reads by name (`Message::header_block`, HS), as it keeps them.
+    Headers,
 }
 
 /// The part of the app in front: mail, calendar, people or tasks.
@@ -298,10 +303,23 @@ pub struct ViewState {
     /// Gmail's categories as a row of tabs above a Gmail Inbox's list, in place of the five
     /// folders under it in the folder pane (#911; `view.gmailCategories`). Off: as folders.
     pub gmail_tabs: bool,
+    /// Every account's folder of this kind in one list (#625; `view.allAccounts`): All Inboxes and
+    /// the like, over the accounts' own folders, nothing copied. Only while the folder in view is
+    /// a top-level folder of that kind ([`crate::unified::of`]); `folder.select` leaves it.
+    /// Kept with the view's settings, so that the window opens on it again (read leniently: a
+    /// value that isn't a kind is none).
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "lenient_kind")]
+    pub unified: Option<mailcraft_model::FolderKind>,
     pub search: String,
     pub scope: Scope,
     pub reading_pane: Pane,
     pub folder_pane: bool,
+    /// The switch between Mail, Calendar, People and Tasks at the foot of the pane on the left,
+    /// in place of the bar of icons down the window's edge (#1174; `view.navigationBar`), so the
+    /// bar's column is the window's. Where the module in view has no pane for it (Mail or the
+    /// calendar with theirs hidden) the bar stays, so the switch is never out of reach. Off: the
+    /// bar.
+    pub nav_foot: bool,
     pub calendar: CalView,
     /// The day the calendar shows (its week or month, depending on the view).
     pub date: Date,
@@ -328,6 +346,20 @@ pub struct ViewState {
     pub task_board: bool,
     /// Whose contacts People shows.
     pub people_account: AccountChoice,
+    /// The contacts folder of that account People shows alone (`view.peopleFolder`, #1917); none:
+    /// all of its folders. Not kept between sessions: an id means another folder in another file.
+    #[serde(skip)]
+    pub people_folder: Option<Id>,
+    /// The Exchange server account whose organisation's address list People shows in place of
+    /// the contacts (`people.addressBook`, #1262); none: the contacts.
+    pub people_book: Option<Id>,
+}
+
+/// [`ViewState::unified`] from saved settings: a kind of folder, or none for anything else, so a
+/// damaged or newer value never loses the rest of the settings.
+fn lenient_kind<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<mailcraft_model::FolderKind>, D::Error> {
+    let value = <Value as Deserialize>::deserialize(d)?;
+    Ok(serde_json::from_value(value).ok())
 }
 
 impl Default for ViewState {
@@ -342,10 +374,12 @@ impl Default for ViewState {
             filter: Filter::All,
             gmail: None,
             gmail_tabs: false,
+            unified: None,
             search: String::new(),
             scope: Scope::Folder,
             reading_pane: Pane::Right,
             folder_pane: true,
+            nav_foot: false,
             calendar: CalView::Week,
             date: Date::default(),
             days: 0,
@@ -358,7 +392,12 @@ impl Default for ViewState {
             task_sort: TaskSort::DueDate,
             task_account: AccountChoice::All,
             people_account: AccountChoice::All,
+<<<<<<< HEAD
             task_board: false,
+=======
+            people_folder: None,
+            people_book: None,
+>>>>>>> upstream/main
         }
     }
 }
@@ -388,6 +427,41 @@ impl Drawn {
     }
 }
 
+/// Most distinct calendar occurrences kept in a selection or accepted by one batch command.
+pub const MAX_SELECTED_EVENTS: usize = 200;
+
+/// A calendar item: a whole nonrepeating event, or one occurrence of a series.
+///
+/// `day` is the intrinsic [`mailcraft_model::Occurrence::day`] key, not the displayed start
+/// date. The legacy [`Selection::event_day`] remains the displayed date of the focused item.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectedEvent {
+    pub id: Id,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub day: Option<Date>,
+}
+
+/// The calendar's part of a [`Selection`], as it was last put right
+/// ([`Session::normalize_calendar_selection`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CalendarFocus {
+    event: Option<Id>,
+    event_day: Option<Date>,
+    events: Vec<SelectedEvent>,
+}
+
+impl CalendarFocus {
+    fn of(sel: &Selection) -> Self {
+        Self { event: sel.event, event_day: sel.event_day, events: sel.events.clone() }
+    }
+
+    /// Whether `sel`'s calendar part is this one.
+    fn is(&self, sel: &Selection) -> bool {
+        self.event == sel.event && self.event_day == sel.event_day && self.events == sel.events
+    }
+}
+
 /// What is selected in each module.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -398,6 +472,9 @@ pub struct Selection {
     pub event: Option<Id>,
     /// The day of the selected occurrence, for an event that repeats.
     pub event_day: Option<Date>,
+    /// Distinct calendar items in selection order; the last remaining item has the focus.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<SelectedEvent>,
     pub task: Option<Id>,
     /// Which of the focused message's rows has the focus, for a message the list shows more than
     /// once (arranged by categories, under each of its categories): the message and the row's
@@ -437,6 +514,8 @@ pub struct Stays {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ListOf {
     folder: Id,
+    /// Every account's folder of a kind (#625).
+    unified: Option<mailcraft_model::FolderKind>,
     filter: Filter,
     /// The Gmail category it shows, if any (#911).
     gmail: Option<(Id, mailcraft_model::GmailCategory)>,
@@ -453,7 +532,7 @@ impl ListOf {
         let query = mailcraft_model::search::Query::parse(&view.search);
         let when = query.has_dates().then(when);
         let search = (!query.is_empty()).then_some((query, view.scope));
-        ListOf { folder: view.folder, filter: view.filter, gmail: view.gmail, search, when }
+        ListOf { folder: view.folder, unified: view.unified, filter: view.filter, gmail: view.gmail, search, when }
     }
 }
 
@@ -644,6 +723,9 @@ pub struct Quote {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Compose {
+    /// A local signature file could not be read; the normal signature was used instead.
+    #[serde(skip)]
+    pub signature_file_warning: String,
     pub mode: ComposeMode,
     /// The message replied to or forwarded.
     pub source: Option<Id>,
@@ -659,6 +741,10 @@ pub struct Compose {
     pub draft: Option<Id>,
     /// The account it is sent from.
     pub account: Id,
+    /// Which of the account's sender addresses it is from (#797), as the account keeps it; empty
+    /// for the account's own address.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub from: String,
     pub to: String,
     pub cc: String,
     pub bcc: String,
@@ -680,6 +766,10 @@ pub struct Compose {
     /// Request a Read Receipt: the message asks for one, to its sender (`compose.readReceipt`).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub read_receipt: bool,
+    /// Delay Delivery (#950, `compose.delay`): the message is not sent before this time (seconds
+    /// since 1970). A time that has passed by the time of Send is no delay.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub send_at: Option<i64>,
     pub in_reply_to: String,
     pub references: Vec<String>,
     /// The signature put in the body (its paragraphs are marked there): which one, how it lays
@@ -694,6 +784,9 @@ pub struct Compose {
     /// How many ids `pictures` have been given, so that none is given twice.
     #[serde(skip_serializing_if = "is_zero_u32")]
     pub picture_seq: u32,
+    /// Follow Up (#948): remind me if nobody replies, once it has gone (`compose.followUp`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub follow_up: Option<crate::cmd::followup::FollowUpPlan>,
     /// Changed since it was opened or last saved.
     pub dirty: bool,
     /// The owner, not only an agent, changed it since it was opened (#494): an agent asks the
@@ -728,6 +821,13 @@ pub(crate) enum Saving {
 }
 
 impl Compose {
+    /// Pictures still referenced by the text, including signature pictures; deleted pictures
+    /// retained only for Undo do not count.
+    pub fn has_pictures(&self) -> bool {
+        let held = self.body.text().pictures();
+        self.pictures.iter().any(|p| held.contains(&p.id)) || self.signature.as_ref().is_some_and(|s| s.pictures.iter().any(|p| held.contains(&p.id)))
+    }
+
     /// Whether the signature in the message is still the one that went in.
     pub fn signature_unedited(&self) -> bool {
         self.signature.as_ref().is_some_and(|inserted| self.body.text().signature().as_ref() == Some(&inserted.text))
@@ -765,6 +865,10 @@ impl Compose {
 }
 
 fn is_zero_u32(n: &u32) -> bool {
+    *n == 0
+}
+
+fn is_zero_u8(n: &u8) -> bool {
     *n == 0
 }
 
@@ -889,6 +993,10 @@ pub struct Prefs {
     /// The rows of the message list stand closer together (`view.density`).
     #[serde(skip_serializing_if = "is_false")]
     pub tight_spacing: bool,
+    /// Every other row of the message list wears a faint band, so that where one message ends
+    /// and the next begins is seen at a glance (`view.shadeRows`, #1657).
+    #[serde(skip_serializing_if = "is_false")]
+    pub shade_rows: bool,
     /// How large the text of the message being read is, in percent (`view.zoom`): read through
     /// [`Prefs::zoom_percent`], which keeps it in range whatever the settings file says.
     pub zoom: u16,
@@ -900,6 +1008,11 @@ pub struct Prefs {
     /// mail that is sent waits in the Outbox. Off unless the owner turns it on; kept between runs.
     #[serde(skip_serializing_if = "is_false")]
     pub offline: bool,
+    /// Wait before sending (#950, `send.wait`): the seconds a message sits in the Outbox after
+    /// Send, with Undo Send, before it goes. 0 is off, as it is until the owner turns it on; read
+    /// through [`Prefs::undo_send`], which keeps it to what the choice offers.
+    #[serde(skip_serializing_if = "is_zero_u8")]
+    pub undo_send_secs: u8,
 }
 
 impl Default for Prefs {
@@ -933,14 +1046,29 @@ impl Default for Prefs {
             second_zone_label: String::new(),
             recent_zones: Vec::new(),
             tight_spacing: false,
+            shade_rows: false,
             zoom: Prefs::ZOOM_DEFAULT,
             recent_searches: Vec::new(),
             offline: false,
+            undo_send_secs: 0,
         }
     }
 }
 
 impl Prefs {
+    /// The waits Undo Send offers, in seconds (0 is off), up to two minutes (#1799). Each fits a
+    /// `u8`, so a settings file stays readable by an older version (which reads more than 30 as 30).
+    pub const UNDO_SEND_CHOICES: [u8; 8] = [0, 5, 10, 15, 20, 30, 60, 120];
+    /// The longest wait offered.
+    pub const UNDO_SEND_MOST: u8 = 120;
+
+    /// The seconds to wait before a message goes, 0 for none (a settings file may say anything:
+    /// a value the choice doesn't offer is read as the next one up, never more than the most).
+    pub fn undo_send(&self) -> u8 {
+        let n = self.undo_send_secs.min(Self::UNDO_SEND_MOST);
+        Self::UNDO_SEND_CHOICES.iter().copied().filter(|c| *c >= n).min().unwrap_or(Self::UNDO_SEND_MOST)
+    }
+
     /// The zoom of the message being read, in percent: the least, the most, and as it comes.
     pub const ZOOM_MIN: u16 = 50;
     pub const ZOOM_MAX: u16 = 300;
@@ -1032,6 +1160,8 @@ pub struct Clock {
 
 #[derive(Clone)]
 pub(crate) struct Undo {
+    /// Stable identity shared with a host's local sidecar across Undo and Redo.
+    token: Arc<()>,
     label: &'static str,
     pub(crate) mailbox: Mailbox,
     /// What the step did to the Microsoft accounts' mail, for keeping them in step when it is
@@ -1045,6 +1175,10 @@ pub(crate) struct Undo {
 }
 
 pub struct Session {
+    /// Trusted host settings only, never loaded from a mailbox or exposed as command parameters.
+    /// Called afresh when a message chooses its account's default signature.
+    pub signature_file: Option<Box<dyn Fn(&str) -> Result<Option<mailcraft_model::Signature>, String> + Send + Sync>>,
+    pub(crate) signature_file_warning: std::sync::Mutex<Option<String>>,
     pub mailbox: Mailbox,
     pub view: ViewState,
     pub sel: Selection,
@@ -1054,6 +1188,9 @@ pub struct Session {
     /// The messages said to wait for the bytes they came as (#30), each said once
     /// ([`Session::first_told_held`]).
     told_held: std::sync::Mutex<HashSet<(Id, Held)>>,
+    /// Who the owner sent mail to, as of the revision, opening and message count it was counted
+    /// at (`cmd::compose::suggest`, #1803). In memory only.
+    pub(crate) send_counts: std::sync::Mutex<Option<((u64, u64, usize), std::sync::Arc<crate::cmd::compose::SendCounts>)>>,
     /// The current message being written, if one is open: the one a command acts on when it names
     /// none (#286), shown in the reading pane.
     pub compose: Option<Compose>,
@@ -1072,8 +1209,19 @@ pub struct Session {
     /// The mailbox changed since it was opened or saved.
     pub dirty: bool,
     pub clock: Clock,
+    /// Minutes east of UTC at an instant, from a host that knows its owner's zone (a phone), for
+    /// when the calendar names no zone and the system names none either ([`Session::offset_at`]).
+    /// An explicitly chosen zone and a detected system zone go before it.
+    pub fallback_offset: Option<Arc<dyn Fn(Timestamp) -> i32 + Send + Sync>>,
     /// What the last synchronisation reported, for the status bar.
     pub sync_status: String,
+    /// The message that Send put in the Outbox with the wait of Undo Send (#950): while it is
+    /// there and its time has not come, the window offers Undo ([`Session::undo_send_wait`]).
+    /// In memory only.
+    pub(crate) undo_send: Option<Id>,
+    /// The step count right after that Send: while it is still the count, nothing else has been
+    /// done since, and Undo (Ctrl+Z) takes the send back ([`Session::undo_send_latest`]).
+    pub(crate) undo_send_step: Option<u64>,
     /// The sync driver's state: what a front end's background jobs remember between looks
     /// ([`crate::sync_driver`]). In memory only, never saved.
     pub driver: crate::sync_driver::Driver,
@@ -1087,6 +1235,12 @@ pub struct Session {
     /// the run is not made good by one that says all went well). Set by any such piece, cleared
     /// when a run is asked for (`sync.ewsRequest`) and when its last piece has been taken in.
     pub(crate) ews_run_cut: std::collections::HashSet<Id>,
+    /// The `Message-ID`s each account had before its run now under way brought new mail into its
+    /// Inbox or Junk E-mail ([`crate::cmd::account::message_ids`]), as the run first needed them:
+    /// kept for the run's later pieces, so that a second copy of one message in a later piece is
+    /// as new as the first (#566). Let go of with the run's last piece (an Inbox pass's: its own),
+    /// a run that ends without it ([`Session::end_run_unfinished`]), an undo, or another mailbox.
+    pub(crate) run_had: std::collections::HashMap<Id, std::collections::HashSet<String>>,
     /// Messages of Microsoft and JMAP accounts the server wouldn't give whole this session (or, for
     /// JMAP, said it no longer has), by account and server id: the background passes them over
     /// (opening one still asks). Never saved.
@@ -1160,6 +1314,10 @@ pub struct Session {
     /// What the last undo or redo couldn't do there (a delete for good, a message sent).
     undo_said: Vec<String>,
     rev: u64,
+    /// The calendar selection as [`Session::normalize_calendar_selection`] last left it, and the
+    /// revision of the mailbox it was put right against: while neither has changed since, there
+    /// is nothing to put right again.
+    calendar_settled: Option<(u64, CalendarFocus)>,
     list_cache: Option<ListCache>,
     /// What each folder holds, as of the revision and message count it was counted at
     /// ([`Session::folder_counts`]).
@@ -1232,6 +1390,38 @@ pub struct Session {
     /// is disabled, the window offers nothing, and no move is put in a request for Gmail's API.
     /// Never saved.
     pub gmail_category_moves: bool,
+    /// Whether calendar and contacts servers (CalDAV and CardDAV, #209) are switched on: the host
+    /// reads `MAILCRAFT_DAV=1` and sets it; off, their commands are disabled and the window offers
+    /// nothing. Ships off until the feature is ready. Never saved.
+    pub dav_enabled: bool,
+    /// When each account's calendar server was last asked which calendars it has (Unix seconds):
+    /// the homes are listed again after an hour ([`crate::cmd::dav_sync`]). Never saved.
+    pub dav_listed: std::collections::HashMap<Id, i64>,
+    /// When each account's calendar server was last asked for anything (a Unix time that goes up
+    /// by at least one at each ask): the one asked longest ago is next, so that every account has its turn. Never saved.
+    pub dav_asked: std::collections::HashMap<Id, i64>,
+    /// Resources of a calendar server read in that no event here names, by account and address:
+    /// one without an ETag (read again after a day, since nothing else shows that it changed) or
+    /// one that gave no event (a to-do, a document that isn't a calendar), so that it is not
+    /// fetched again until it changes ([`crate::cmd::dav_sync`]). Never saved: after a restart
+    /// each is read once.
+    pub dav_seen: std::collections::HashMap<Id, std::collections::HashMap<String, crate::cmd::dav_sync::Seen>>,
+    /// How many times each account's calendar server settings were put away or changed: a read
+    /// asked for before (`DavAsk::generation`) is not taken in, even when the settings are the
+    /// same again. Never saved, and never cleared: it only goes up.
+    pub dav_generation: std::collections::HashMap<Id, u64>,
+    /// The width and theme each message was last read at in each place (the reading pane, a window
+    /// of its own), whether its text part was shown instead of its HTML, and when it was last said
+    /// ([`Session::read_at`]): a reply or forward quotes it as it was read where it was asked for,
+    /// with what its `@media` hid there left out. A message not read there is quoted with only
+    /// what every pane would show of it.
+    read_at: HashMap<(Id, ReadIn), (mailcraft_html::Env, bool, u64)>,
+    /// The messages whose drawn pictures were looked for ([`Session::note_drawn`]): forgotten
+    /// when an Undo or Redo may put back a message from before it, and with another mailbox.
+    // lean: one id per message opened; a cap if a session ever opens millions.
+    drawn_checked: HashSet<Id>,
+    /// How many times [`Session::read_at`] was told something: the age of what it keeps.
+    read_count: u64,
     /// The word index of the mailbox file, while [`Session::index_words`] is on and the mailbox
     /// is kept in a file ([`crate::words`]).
     #[cfg(not(target_arch = "wasm32"))]
@@ -1275,7 +1465,91 @@ impl Swaps {
     }
 }
 
+/// Most places and messages whose reading width and theme are kept ([`Session::read_at`]); the
+/// one said longest ago goes first. (One forgotten is quoted with what every pane shows.)
+const MAX_READ_AT: usize = 1024;
+
+/// Where a message is read: the main window's reading pane (or a phone's message view), or a
+/// window of its own, by the window's number. A reply asked for there quotes it as read there.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum ReadIn {
+    #[default]
+    Pane,
+    Window(u64),
+}
+
 impl Session {
+    /// Message `id` was read in `place` at the width and in the theme `env`, its text part shown
+    /// instead of its HTML when `as_text` (the host says so each time it shows it, and only when
+    /// it had HTML to choose from).
+    pub fn read_at(&mut self, id: Id, place: ReadIn, env: mailcraft_html::Env, as_text: bool) {
+        self.read_count = self.read_count.saturating_add(1);
+        // The pictures its body draws are the body's (looked for once: [`Session::note_drawn`]).
+        if !self.drawn_checked.contains(&id)
+            && let Some(m) = self.mailbox.messages.get(&id).cloned()
+        {
+            self.note_drawn(id, &m);
+        }
+        if self.read_at.len() >= MAX_READ_AT && !self.read_at.contains_key(&(id, place)) {
+            // lean: a walk of the 1024 at the cap; an ordered map if it is ever felt.
+            if let Some(oldest) = self.read_at.iter().min_by_key(|(_, r)| r.2).map(|(k, _)| *k) {
+                self.read_at.remove(&oldest);
+            }
+        }
+        self.read_at.insert((id, place), (env, as_text, self.read_count));
+    }
+
+    /// Mark inline the parts of message `id` that its HTML draws, as `seen` (the message with its
+    /// body in memory) has it ([`mailcraft_mime_model::drawn_parts`]): for a message read in
+    /// before that was told (#1970), so that its signature pictures are no longer attachments,
+    /// here or in the list, with its body on disk too. Outside the history: nothing the owner did.
+    ///
+    /// Looked for once per message with its HTML at hand ([`Session::drawn_checked`]). The
+    /// message list and the counts stand through it, as through a read mark: a mark changes
+    /// nothing the list is built from, unless it lists by attachments or searches.
+    pub fn note_drawn(&mut self, id: Id, seen: &Message) {
+        let Some(html) = seen.body.html.as_deref() else { return };
+        if self.drawn_checked.contains(&id) {
+            return;
+        }
+        self.drawn_checked.insert(id);
+        let Some(m) = self.mailbox.messages.get(&id).filter(|m| !m.draft && m.attachments.iter().any(|a| !a.inline && !a.content_id.is_empty()))
+        else {
+            return;
+        };
+        let drawn = mailcraft_mime_model::drawn_parts(html, &m.attachments);
+        if drawn.iter().all(|i| m.attachments.get(*i).is_none_or(|a| a.inline)) {
+            return;
+        }
+        let mut copy = Message::clone(m);
+        mailcraft_mime_model::mark_parts(&mut copy.attachments, &drawn);
+        let stands = self.view.filter == Filter::All
+            && mailcraft_model::search::Query::parse(&self.view.search).is_empty()
+            && self.list_cache.as_ref().is_some_and(|c| c.key == self.list_key());
+        let counts_before = self.counts_cache.as_ref().map(|(_, counts)| counts.clone());
+        let rev_before = self.rev;
+        self.put_message(id, copy);
+        self.rev += 1;
+        self.dirty = true;
+        if stands {
+            self.keep_through_read_marks(&[], rev_before, counts_before);
+        }
+    }
+
+    /// How message `id` was last read in each place it is remembered in ([`Session::read_as`]).
+    pub fn read_elsewhere(&self, id: Id) -> Vec<(mailcraft_html::Env, bool)> {
+        let mut out: Vec<_> = self.read_at.iter().filter(|((of, _), _)| *of == id).map(|(_, r)| (r.0, r.1)).collect();
+        // In one order, whatever the map's.
+        out.sort_by_key(|(env, as_text)| (env.width(), env.dark(), *as_text));
+        out
+    }
+
+    /// The width and theme message `id` was last read at in `place`, and whether as its text part
+    /// ([`Session::read_at`]); `None` when it wasn't read there (or was forgotten).
+    pub fn read_as(&self, id: Id, place: ReadIn) -> Option<(mailcraft_html::Env, bool)> {
+        self.read_at.get(&(id, place)).map(|r| (r.0, r.1))
+    }
+
     pub fn new(mailbox: Mailbox) -> Self {
         Session::with_clock(mailbox, Clock::default())
     }
@@ -1284,11 +1558,14 @@ impl Session {
     /// mailbox is looked at: what zone its times are in is settled by it, [`Session::settle_zone`].)
     pub fn with_clock(mailbox: Mailbox, clock: Clock) -> Self {
         let mut s = Session {
+            signature_file: None,
+            signature_file_warning: Default::default(),
             mailbox,
             view: ViewState::default(),
             sel: Selection::default(),
             lost_originals: std::sync::Mutex::default(),
             told_held: std::sync::Mutex::default(),
+            send_counts: std::sync::Mutex::default(),
             compose: None,
             composing: Vec::new(),
             compose_seq: 0,
@@ -1298,11 +1575,15 @@ impl Session {
             path: None,
             dirty: false,
             clock,
+            fallback_offset: None,
             sync_status: String::new(),
+            undo_send: None,
+            undo_send_step: None,
             driver: Default::default(),
             sync_progress: Default::default(),
             graph_index: Default::default(),
             ews_run_cut: Default::default(),
+            run_had: Default::default(),
             graph_unfetchable: Default::default(),
             kept_for_now: Default::default(),
             openings: 0,
@@ -1328,6 +1609,7 @@ impl Session {
             steps_moved: 0,
             undo_said: Vec::new(),
             rev: 0,
+            calendar_settled: None,
             list_cache: None,
             counts_cache: None,
             conversation_cache: None,
@@ -1351,6 +1633,14 @@ impl Session {
             interface_language: mailcraft_i18n::Lang::English,
             date_region: None,
             gmail_category_moves: crate::gmail::GMAIL_CATEGORY_MOVES,
+            dav_enabled: false,
+            dav_listed: Default::default(),
+            dav_asked: Default::default(),
+            dav_seen: Default::default(),
+            dav_generation: Default::default(),
+            read_at: HashMap::new(),
+            drawn_checked: HashSet::new(),
+            read_count: 0,
             #[cfg(not(target_arch = "wasm32"))]
             words: None,
         };
@@ -1413,11 +1703,46 @@ impl Session {
         self.clock.zone.unwrap_or_else(Zone::system)
     }
 
+    /// The clock the rules run by: now, in the zone the calendar is shown in, with a flag a rule
+    /// sets falling due at the end of the working day.
+    pub fn rule_clock(&self) -> mailcraft_model::RuleClock {
+        mailcraft_model::RuleClock { now: self.now(), zone: self.zone(), due_hour: self.prefs.work_end }
+    }
+
     /// The offset at `ts` of the zone the calendar is shown in, in minutes east of UTC.
     pub fn offset_at(&self, ts: Timestamp) -> i32 {
         match self.clock.offset {
             Some(offset) => offset,
-            None => self.zone().offset_at(ts),
+            None => {
+                let zone = self.zone();
+                match (&self.fallback_offset, zone.is_local()) {
+                    (Some(fallback), true) => fallback(ts).clamp(-18 * 60, 18 * 60),
+                    _ => zone.offset_at(ts),
+                }
+            }
+        }
+    }
+
+    /// The wall-clock time in the zone the calendar is shown in at `ts`, by the same offset as
+    /// [`Session::offset_at`] (the phone's, where the system names no zone).
+    pub fn wall_at(&self, ts: Timestamp) -> DateTime {
+        DateTime::from_civil_seconds(ts.saturating_add(i64::from(self.offset_at(ts)) * 60))
+    }
+
+    /// The instant of a wall-clock time in the zone the calendar is shown in, by the same offset as
+    /// [`Session::offset_at`]. Where the offset is the phone's (the system names no zone), a time
+    /// the clocks skip or repeat takes the offset in force at the time read as if it were UTC.
+    pub fn instant_of(&self, wall: DateTime) -> Timestamp {
+        let zone = self.zone();
+        match (&self.fallback_offset, zone.is_local(), self.clock.offset) {
+            (Some(fallback), true, None) => {
+                let first = wall.to_timestamp(0);
+                let guess = fallback(first).clamp(-18 * 60, 18 * 60);
+                let at = wall.to_timestamp(guess);
+                wall.to_timestamp(fallback(at).clamp(-18 * 60, 18 * 60))
+            }
+            (_, _, Some(offset)) => wall.to_timestamp(offset.clamp(-18 * 60, 18 * 60)),
+            _ => zone.instant(wall),
         }
     }
 
@@ -1437,13 +1762,7 @@ impl Session {
     /// back; a front end calls it when it draws, so that the calendar follows the computer's
     /// zone while the program runs.
     pub fn settle_zone(&mut self) -> bool {
-        if !self.mailbox.has_times() {
-            return false;
-        }
-        let zone = self.zone();
-        if zone.is_local() || self.mailbox.zone == zone.id() {
-            return false;
-        }
+        let Some(zone) = self.zone_due() else { return false };
         let stamped = self.mailbox.zone.clone();
         let moved = self.mailbox.rebase(zone);
         if self.mailbox.zone == stamped {
@@ -1455,11 +1774,41 @@ impl Session {
             return false;
         }
         log::info!("calendar: the times of {moved} events are now by the clock of {} (they were by {stamped})", self.mailbox.zone);
-        // The day an occurrence was picked by is another day's name now.
+        // Typed keys and a recurring focus need a fresh selection in the new coordinates;
+        // an ordinary event keeps its stable identity and its rebased displayed start.
+        self.sel.events.clear();
+        self.sel.event = self.sel.event.filter(|id| self.mailbox.event(*id).is_some_and(|event| event.recurrence.is_none()));
         self.sel.event_day = self.sel.event.and_then(|id| self.mailbox.event(id)).map(|event| event.start.date);
         self.rev += 1;
         self.dirty = true;
         true
+    }
+
+    /// The zone [`Session::settle_zone`] would move the mailbox's times to, when there is one:
+    /// the computer was carried to another zone, or another was chosen in the options, and no
+    /// command or frame has settled it since.
+    fn zone_due(&self) -> Option<Zone> {
+        if !self.mailbox.has_times() {
+            return None;
+        }
+        let zone = self.zone();
+        (!zone.is_local() && self.mailbox.zone != zone.id()).then_some(zone)
+    }
+
+    /// The mailbox as the next command finds it (#1674): [`Session::run`] settles the zone before
+    /// anything else, so what is said of an undo or a redo before it runs (an agent's question,
+    /// what a window would lose) is worked out of the mailbox it will run on, whether a frame
+    /// has settled the zone yet or not. Borrowed when the zone is settled, which is nearly
+    /// always; else a copy by the new zone's clock (O(n)).
+    fn as_run_finds(&self) -> Cow<'_, Mailbox> {
+        match self.zone_due() {
+            None => Cow::Borrowed(&self.mailbox),
+            Some(zone) => {
+                let mut ahead = self.mailbox.clone();
+                ahead.rebase(zone);
+                Cow::Owned(ahead)
+            }
+        }
     }
 
     pub fn local(&self, ts: Timestamp) -> DateTime {
@@ -2213,6 +2562,34 @@ impl Session {
                     None => Ok(o.data.clone()),
                 }
             }
+            Part::Headers => match m.header_block.kept.filter(|_| m.header_block.data.is_empty()) {
+                Some(r) => self.fetch(&r),
+                None => Ok(m.header_block.data.clone()),
+            },
+        }
+    }
+
+    /// Message `m` with its header block in memory (HS), for what shows or writes its header
+    /// whole: View Source, an export, a copy put elsewhere. A block that can't be read is
+    /// unavailable: the message is as it is without it, with a line in the log.
+    pub(crate) fn with_header_block(&self, m: Arc<Message>) -> Arc<Message> {
+        if m.header_block.is_loaded() {
+            return m;
+        }
+        match self.content(m.id, Part::Headers).map(|bytes| mailcraft_model::HeaderBlock::read(&bytes)) {
+            Ok(Some(block)) => {
+                let mut copy = Message::clone(&m);
+                copy.header_block = block;
+                Arc::new(copy)
+            }
+            Ok(None) => {
+                log::warn!("message {}: its header lines are damaged; it is written without them", m.id);
+                m
+            }
+            Err(e) => {
+                log::warn!("message {}: its header lines couldn't be read ({e}); it is written without them", m.id);
+                m
+            }
         }
     }
 
@@ -2247,7 +2624,7 @@ impl Session {
     /// that can't be read is no reason to keep the message from going anywhere: the copy is
     /// without it then (built from the parts, as before it was kept), with a line in the log.
     pub fn loaded_message(&self, id: Id) -> Result<Arc<Message>, CmdError> {
-        let m = self.loaded_message_where(id, |_| true)?;
+        let m = self.with_header_block(self.loaded_message_where(id, |_| true)?);
         if m.original.as_ref().is_none_or(|o| o.is_loaded()) {
             return Ok(m);
         }
@@ -2264,6 +2641,21 @@ impl Session {
                 self.want_original(id);
             }
         }
+        Ok(Arc::new(copy))
+    }
+
+    /// [`Session::loaded_message`] as it is written as an Internet message (an export, a copy put
+    /// on a server). Mail not split with its hops kept ([`Message::hops_kept`], #2059) leaves its
+    /// verdicts and Exchange's stamps behind, as a copy put on another server does: its block may
+    /// be one lost (unreadable, read as none, or split again without it) with the server's hop
+    /// in it, and read back as fresh mail its verdicts would stand above a sender's hop.
+    pub(crate) fn loaded_to_write(&self, id: Id) -> Result<Arc<Message>, CmdError> {
+        let m = self.loaded_message(id)?;
+        if m.hops_kept {
+            return Ok(m);
+        }
+        let mut copy = Message::clone(&m);
+        mailcraft_model::auth_results::forget_stamps(&mut copy);
         Ok(Arc::new(copy))
     }
 
@@ -2313,14 +2705,14 @@ impl Session {
         m.attachments.iter().filter_map(|a| a.kept.filter(|_| a.data.is_empty())).chain(original).all(|r| self.fetch(&r).is_ok())
     }
 
-    /// What a copy of `m` put on another server is made of ([`Session::loaded_message`]), or
+    /// What a copy of `m` put on another server is made of ([`Session::loaded_to_write`]), or
     /// `None` while it waits: the bytes a protected message came as (#30) couldn't be read in that
     /// one read, and the copy it is being moved out of may hold them
     /// ([`crate::cmd::mail::check_again::source_may_hold`]). That copy is asked for them first
     /// ([`Session::ask_for_lost_originals`]), and goes only once nothing can be lost with it:
     /// made of its parts the copy would be taken for the message.
     pub(crate) fn placeable(&self, m: &Message) -> Result<Option<Arc<Message>>, CmdError> {
-        let whole = self.loaded_message(m.id)?;
+        let whole = self.loaded_to_write(m.id)?;
         let fell_back = m.original.is_some() && whole.original.is_none();
         Ok((!fell_back || !crate::cmd::mail::check_again::source_may_hold(&self.mailbox, m.id)).then_some(whole))
     }
@@ -2406,11 +2798,20 @@ impl Session {
     /// the next time.
     pub fn load_where(&mut self, id: Id, pick: impl Fn(&Attachment) -> bool) -> Result<bool, CmdError> {
         let Some(m) = self.mailbox.messages.get(&id) else { return Err(failed!("no message with id {id}", id)) };
-        if !m.body_is_kept() && m.attachments.iter().all(|a| a.is_loaded() || !pick(a)) {
+        // `pick` is asked once about each attachment that is not in memory, in order: one that
+        // counts (that stops after so many) can rely on it.
+        let picked: Vec<bool> = m.attachments.iter().filter(|a| !a.is_loaded()).map(&pick).collect();
+        if !m.body_is_kept() && !picked.contains(&true) {
             return Ok(false);
         }
         let mut copy = Message::clone(m);
-        let loaded = loaded_into(&mut copy, |part| self.content(id, part), &pick);
+        let asked = std::cell::Cell::new(0usize);
+        let again = |_: &Attachment| {
+            let at = asked.get();
+            asked.set(at + 1);
+            picked.get(at).copied().unwrap_or(false)
+        };
+        let loaded = loaded_into(&mut copy, |part| self.content(id, part), &again);
         if let Err(e) = &loaded
             && copy.body_is_kept()
             && let Some(kept) = copy.kept.as_deref_mut()
@@ -2566,14 +2967,72 @@ impl Session {
     /// content it keeps on disk is kept from the sweep while it is (`store::keep_held`). In a command,
     /// the state the command started from gets it too ([`Session::run`]).
     fn put_message(&mut self, id: Id, m: Message) {
+        self.put_in_place(id, m, false);
+    }
+
+    /// [`Session::put_message`]; `in_steps`: `m` is the message with content let go of, and the
+    /// Undo and Redo steps let go of it too ([`Session::lean_steps`]).
+    fn put_in_place(&mut self, id: Id, m: Message, in_steps: bool) {
         let new = Arc::new(m);
         let Some(old) = self.mailbox.messages.insert(id, new.clone()) else { return };
+        #[cfg(not(target_arch = "wasm32"))]
+        if in_steps {
+            self.lean_steps(id, &old, &new);
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _ = in_steps;
         if Arc::strong_count(&old) > 1 {
             self.hold(std::iter::once(&old));
         }
         if let Some(swaps) = &mut self.swaps {
             swaps.push(Swap { id, old, new });
         }
+    }
+
+    /// Message `id` was `old` and the budget let go of its content (`new`, which names it on
+    /// disk): the Undo and Redo steps let go of it too, so that what the budget let go of isn't
+    /// kept in memory by up to [`MAX_HISTORY`] steps on each side. A step that holds `old` itself
+    /// gets `new`; one that holds another version of it with content in memory (a step from
+    /// before a flag or a move, which copied the message) gets that version without what of
+    /// its content is on disk as it is ([`crate::store::evictable`]), and keeps it from the
+    /// sweep as a step's message that the mailbox doesn't have ([`Session::hold`]). Nothing a
+    /// step would put back changes but where its content is: an undo brings it in again when
+    /// it is wanted. Copies of the map that shared a chunk still share one.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn lean_steps(&mut self, id: Id, old: &Arc<Message>, new: &Arc<Message>) {
+        if self.history.is_empty() && self.redo.is_empty() {
+            return;
+        }
+        let Some(path) = self.path.clone() else { return };
+        let mut done = mailcraft_model::messages::Replaced::default();
+        // Each version found in a step, as it was and as it is without its content.
+        let mut made: Vec<(Arc<Message>, Arc<Message>)> = vec![(old.clone(), new.clone())];
+        let live = &self.mailbox.messages;
+        // `theirs` without its content: the one made already for that version, else one made now.
+        // (One with nothing to let go of is noted as its own, and not looked at again.)
+        let mut lean_of = |theirs: &Arc<Message>| -> Arc<Message> {
+            if let Some((_, lean)) = made.iter().find(|(was, _)| Arc::ptr_eq(was, theirs)) {
+                return lean.clone();
+            }
+            let lean = if in_memory(theirs) == 0 { None } else { crate::store::evictable(&path, id, theirs) };
+            let lean = lean.map_or_else(|| theirs.clone(), Arc::new);
+            made.push((theirs.clone(), lean.clone()));
+            lean
+        };
+        for step in self.history.iter_mut().chain(self.redo.iter_mut()) {
+            if let Some(theirs) = step.mailbox.messages.get(&id).cloned() {
+                let lean = lean_of(&theirs);
+                if !Arc::ptr_eq(&lean, &theirs) {
+                    step.mailbox.messages.put_in_place_of(id, &theirs, &lean, live, &mut done);
+                }
+            }
+            // What a step noted of a Microsoft, EWS or JMAP account's message, as it was right
+            // after the step, holds its content too.
+            if let Some(theirs) = step.touched.message_mut(id) {
+                *theirs = lean_of(theirs);
+            }
+        }
+        self.hold(made.iter().skip(1).filter(|(was, lean)| !Arc::ptr_eq(was, lean)).map(|(_, lean)| lean));
     }
 
     /// Keep what `messages` keep on disk from the sweep while something holds them.
@@ -2637,7 +3096,7 @@ impl Session {
                 }
                 match lean {
                     Some(lean) => {
-                        self.put_message(id, lean);
+                        self.put_in_place(id, lean, true);
                         self.resident_bytes = self.resident_bytes.saturating_sub(bytes);
                         self.loads += 1;
                     }
@@ -2661,6 +3120,61 @@ impl Session {
             !goes
         });
         self.resident_bytes = self.resident_bytes.saturating_sub(freed);
+    }
+
+    /// Let go of the content brought into messages, from the message after `from` (from the
+    /// first: `None`) on, as the budget does ([`Session::evict`]): a message whose body or files
+    /// are in memory and safely on disk as they are goes back to naming them, and its Undo and
+    /// Redo steps let go of them too. The messages `keep` names (open in a window, being written)
+    /// and those selected stay as they are. For a window out of sight a while; what is shown
+    /// again is read again. At most `most` messages are looked at in one call, whether they could
+    /// go or not: the answer is the message to go on
+    /// after, `None` once every message was looked at. Nothing is let go of while a command or a
+    /// search runs.
+    pub fn let_go_of_content(&mut self, from: Option<Id>, keep: &HashSet<Id>, most: usize) -> Option<Id> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if self.swaps.is_some() || self.search_pass.is_some() {
+                return from;
+            }
+            let path = self.path.clone()?;
+            let mut next = from.map_or(std::ops::Bound::Unbounded, std::ops::Bound::Excluded);
+            let mut left = most.max(1);
+            loop {
+                let found = self
+                    .mailbox
+                    .messages
+                    .range((next, std::ops::Bound::Unbounded))
+                    // What is selected stays, as the budget's own eviction leaves it.
+                    .find(|(id, m)| !keep.contains(id) && !self.sel.messages.contains(id) && may_go(m))
+                    .map(|(id, m)| (*id, crate::store::evictable(&path, *id, m)));
+                let Some((id, lean)) = found else { break };
+                next = std::ops::Bound::Excluded(id);
+                if let Some(lean) = lean {
+                    self.put_in_place(id, lean, true);
+                    self.loads += 1;
+                }
+                // Each one looked at counts, let go of or not: a slice is never a walk of all.
+                left -= 1;
+                if left == 0 {
+                    return Some(id);
+                }
+            }
+            // What is counted as brought in is what of it is still in memory and could go.
+            let messages = &self.mailbox.messages;
+            self.resident.retain_mut(|(id, bytes)| {
+                let now = messages.get(id).filter(|m| may_go(m)).map_or(0, |m| in_memory(m));
+                *bytes = (*bytes).min(now);
+                *bytes > 0
+            });
+            self.resident_bytes = self.resident.iter().map(|(_, b)| *b).fold(0, u64::saturating_add);
+            None
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (from, keep, most);
+            None
+        }
     }
 
     /// The mailbox was `was` and is now another (an undo or a redo): what is counted as brought
@@ -2728,7 +3242,7 @@ impl Session {
     pub fn loaded_mailbox(&self) -> Result<Mailbox, CmdError> {
         let mut mailbox = self.mailbox.clone();
         for (id, m) in &self.mailbox.messages {
-            if !m.is_loaded() {
+            if !m.is_loaded() || !m.header_block.is_loaded() {
                 mailbox.messages.insert(*id, self.loaded_message(*id)?);
             }
         }
@@ -2742,7 +3256,7 @@ impl Session {
         outbox
             .into_iter()
             .filter_map(|m| {
-                if m.is_loaded() {
+                if m.is_loaded() && m.header_block.is_loaded() {
                     return Some(m);
                 }
                 match self.loaded_message(m.id) {
@@ -2932,6 +3446,90 @@ impl Session {
         }
         // And its times are by the clock of the zone the calendar is shown in.
         self.settle_zone();
+        self.normalize_calendar_selection();
+    }
+
+    /// Keep instance selection and legacy focus coherent after a command or a server sweep.
+    ///
+    /// Every successful command comes here. When neither the mailbox ([`Session::rev`]) nor the
+    /// calendar selection has changed since it was last put right, it is right as it is; else
+    /// each series is looked at once for all of its selected days (`cmd::calendar::days_gone`).
+    fn normalize_calendar_selection(&mut self) {
+        if self.sel.events.is_empty() {
+            return;
+        }
+        if self.calendar_settled.as_ref().is_some_and(|(rev, focus)| *rev == self.rev && focus.is(&self.sel)) {
+            return;
+        }
+        self.settle_calendar_selection();
+        self.calendar_settled = Some((self.rev, CalendarFocus::of(&self.sel)));
+    }
+
+    fn settle_calendar_selection(&mut self) {
+        let here = crate::cmd::remote::offset_of(self);
+        let mailbox = &self.mailbox;
+        let selection = &mut self.sel;
+        // A legacy producer focused something else: its single target replaces the old set.
+        let replaced = selection.events.last().and_then(|item| {
+            let event = mailbox.event(item.id)?;
+            let date = item.day.filter(|_| event.recurrence.is_some()).map_or(event.start.date, |day| event.occurrence_times(day, &here).0.date);
+            // (Another day beside the same one-off appointment names nothing else of it: a server
+            // that moved it moved the focus with it, and its date is put right below. Of a series,
+            // another day is another occurrence.)
+            let elsewhere = event.recurrence.is_some() && selection.event_day.is_some_and(|day| day != date);
+            Some(selection.event.is_some() && (selection.event != Some(item.id) || elsewhere))
+        });
+        if replaced == Some(true) {
+            selection.events.clear();
+            return;
+        }
+        selection.events.truncate(MAX_SELECTED_EVENTS);
+        // The days each selected series no longer has, read once per series.
+        let mut days_of: Vec<(Id, Vec<Date>)> = Vec::new();
+        for item in &selection.events {
+            if let Some(day) = item.day {
+                match days_of.iter_mut().find(|(id, _)| *id == item.id) {
+                    Some((_, days)) => days.push(day),
+                    None => days_of.push((item.id, vec![day])),
+                }
+            }
+        }
+        let gone: Vec<(Id, HashSet<Date>)> = days_of
+            .iter()
+            .filter_map(|(id, days)| {
+                let event = mailbox.event(*id).filter(|event| event.recurrence.is_some())?;
+                Some((*id, crate::cmd::calendar::days_gone(event, days, &here)))
+            })
+            .collect();
+        let mut seen = Vec::with_capacity(selection.events.len());
+        selection.events.retain_mut(|item| {
+            let Some(event) = mailbox.event(item.id) else { return false };
+            // (A cancelled appointment can't be selected: one a server cancelled leaves the set,
+            // and the rest stays usable.)
+            if event.cancelled {
+                return false;
+            }
+            if event.recurrence.is_none() {
+                item.day = None;
+            } else {
+                let Some(day) = item.day else { return false };
+                if gone.iter().any(|(id, days)| *id == item.id && days.contains(&day)) {
+                    return false;
+                }
+            }
+            if seen.contains(item) {
+                return false;
+            }
+            seen.push(*item);
+            true
+        });
+        let focus = selection.events.last().and_then(|item| {
+            let event = mailbox.event(item.id)?;
+            let date = item.day.map_or(event.start.date, |day| event.occurrence_times(day, &here).0.date);
+            Some((item.id, date))
+        });
+        selection.event = focus.map(|(id, _)| id);
+        selection.event_day = focus.map(|(_, date)| date);
     }
 
     /// A command changed the mailbox and goes on to ask of the list (a message it brought in, to
@@ -2966,10 +3564,30 @@ impl Session {
         self.path.is_some() && !self.dirty
     }
 
+    /// Keep `ids` on this device for the rest of the session whatever its limits say: messages the
+    /// owner opened, or brought here from a search on the server, although they are older than
+    /// their account's mail to keep offline (MB3.17). Until the mailbox is opened again; at most
+    /// [`MOST_KEPT_FOR_NOW`] are held, and past that nothing more is kept this way.
+    pub fn keep_for_now(&mut self, ids: impl IntoIterator<Item = Id>) {
+        for id in ids {
+            if self.kept_for_now.len() >= MOST_KEPT_FOR_NOW {
+                break;
+            }
+            self.kept_for_now.insert(id);
+        }
+    }
+
+    /// Whether message `id` is kept on this device for the session ([`Session::keep_for_now`]).
+    pub fn kept_for_now(&self, id: Id) -> bool {
+        self.kept_for_now.contains(&id)
+    }
+
     /// Replace the mailbox (File › New, File › Open): history and selection start over.
     pub fn replace_mailbox(&mut self, mailbox: Mailbox) {
         self.mailbox = mailbox;
         self.resident.clear();
+        // (Its messages are looked at for the first time, whatever their ids.)
+        self.drawn_checked.clear();
         self.resident_bytes = 0;
         self.display_failed.clear();
         self.search_pass = None;
@@ -2986,11 +3604,21 @@ impl Session {
         self.signatures.forget_messages();
         self.graph_swept.clear();
         self.graph_listed_short.clear();
+        self.run_had.clear();
         self.jmap_read.clear();
         self.auto_replies.clear();
+        // When a calendar server was asked, and what of it was read, is of the old mailbox's accounts.
+        self.dav_listed.clear();
+        self.dav_asked.clear();
+        self.dav_seen.clear();
         // The background fetch's waits and offline flag were the old mailbox's.
         self.driver.fetch.forget();
         self.openings = self.openings.wrapping_add(1);
+        // What the sync driver remembered is the old mailbox's: its accounts' ids may name others.
+        self.driver.reset();
+        // The message Undo Send waited on was the old mailbox's.
+        self.undo_send = None;
+        self.undo_send_step = None;
         self.pst_running = None;
         self.pst_tops.clear();
         self.history.clear();
@@ -3006,6 +3634,7 @@ impl Session {
         // An account's id means another account there, or none.
         self.view.task_account = AccountChoice::All;
         self.view.people_account = AccountChoice::All;
+        self.view.people_folder = None;
         self.dirty = false;
         self.rev += 1;
         self.normalize();
@@ -3015,13 +3644,29 @@ impl Session {
     // ---- undo ----
 
     fn snapshot(&self, label: &'static str) -> Undo {
-        Undo { label, mailbox: self.mailbox.clone(), touched: Default::default(), sel: self.sel.clone(), folder: self.view.folder, mail: false }
+        Undo {
+            token: Arc::new(()),
+            label,
+            mailbox: self.mailbox.clone(),
+            touched: Default::default(),
+            sel: self.sel.clone(),
+            folder: self.view.folder,
+            mail: false,
+        }
     }
 
     /// [`Session::snapshot`] without the mailbox, for a command that doesn't change it
     /// ([`Session::run`]): never kept as a step of the history.
     fn snapshot_light(&self, label: &'static str) -> Undo {
-        Undo { label, mailbox: Mailbox::default(), touched: Default::default(), sel: self.sel.clone(), folder: self.view.folder, mail: false }
+        Undo {
+            token: Arc::new(()),
+            label,
+            mailbox: Mailbox::default(),
+            touched: Default::default(),
+            sel: self.sel.clone(),
+            folder: self.view.folder,
+            mail: false,
+        }
     }
 
     /// A .pst import that came in a batch at a time, kept as one step to undo: the mailbox as it
@@ -3135,6 +3780,13 @@ impl Session {
         self.redo.last().map(|u| u.label)
     }
 
+    /// A run of `account` that ends without its last piece (an Inbox check that gave way to a run
+    /// the owner asked for, a job whose thread ended early): what the account had before the run's new mail is let go of, so that
+    /// its next run starts from what it has then (#566).
+    pub fn end_run_unfinished(&mut self, account: Id) {
+        self.run_had.remove(&account);
+    }
+
     /// Forget every undo and redo step: the mailbox as it was then is not what the mail server
     /// has any more (changes were pushed, mail was sent), and going back to it would undo here
     /// what can't be undone there.
@@ -3150,6 +3802,12 @@ impl Session {
         self.steps_moved
     }
 
+    /// Identity of the next step, for host-local settings that must follow that operation.
+    /// A weak reference expires when the step leaves both stacks; no mailbox data is exposed.
+    pub fn undo_token(&self, redo: bool) -> Option<std::sync::Weak<()>> {
+        (if redo { &self.redo } else { &self.history }).last().map(|u| Arc::downgrade(&u.token))
+    }
+
     /// What the last undo or redo couldn't do, in words (empty when it did everything).
     pub fn undo_said(&self) -> &[String] {
         &self.undo_said
@@ -3157,11 +3815,66 @@ impl Session {
 
     /// Go to the mailbox of `u`. A Microsoft account's mail stays in step with its server: what
     /// the server last said is kept, so the next run sends the reverse ([`crate::undo`]).
+    /// The events whose categories the step undone (or redone) changed and whose servers were
+    /// to be told of it are told again, the other way (#661): mail and to-dos need nothing of the
+    /// kind, as what differs from the server's copy goes by itself, but an event's change goes
+    /// only when it is noted. One changed since (by its server, say) is left alone. One whose
+    /// change went has a change that waited before the step dropped: it went with it, and the
+    /// server has what the step left, which the change noted again starts from. One whose change
+    /// is still waiting, or on its way with its answer to come or lost, may be on its server as
+    /// the step left it or not, so it is told either way, and the name the step gave isn't
+    /// deleted there while the event there may have it: a change of it that waited before the
+    /// step, which the undo puts back, sends the categories again, and without one a change is
+    /// noted again. (That sends the server what it has when the step's change never went, and
+    /// the answer to the step's change is taken in against it; should the server refuse the
+    /// step's change, the event keeps the categories put back here.) Only the categories go, which
+    /// writes to nobody, and only to a calendar that may be changed by what its server last said
+    /// (the calendars put back are as they were). A change is this event's by its id here and its
+    /// server's id for it both: another account's server may use the same id.
+    fn tell_events_again(&mut self, now: &Mailbox, touched: &crate::undo::Touched) {
+        use mailcraft_model::remote::{EventChange, EventChangeKind};
+        let offset_at = crate::cmd::remote::offset_of(self);
+        let mut no_room = 0u64;
+        let waiting =
+            |c: &EventChange, id: Id, remote: &str| c.kind == EventChangeKind::Update && c.event == id && !c.remote.is_empty() && c.remote == remote;
+        for (id, left) in touched.event_categories() {
+            let (Some(was), Some(is)) = (now.events.get(id), self.mailbox.events.get(id).cloned()) else { continue };
+            if was.categories != *left
+                || is.categories == was.categories
+                || !touched.told_event(*id)
+                || crate::cmd::remote::writable(now, was.calendar).is_err()
+            {
+                continue;
+            }
+            if now.event_changes.iter().any(|c| waiting(c, *id, &was.origin.id))
+                && let Some(put_back) = self.mailbox.event_changes.iter_mut().find(|c| waiting(c, *id, &is.origin.id))
+            {
+                if let Some(base) = put_back.base.as_deref_mut() {
+                    base.categories.clone_from(&was.categories);
+                }
+                continue;
+            }
+            self.mailbox.event_changes.retain(|c| !waiting(c, *id, &is.origin.id));
+            let mut there = (*is).clone();
+            there.categories.clone_from(&was.categories);
+            if crate::cmd::remote::note_changed(&mut self.mailbox, &there, &offset_at).is_err() {
+                no_room = no_room.saturating_add(1);
+            }
+        }
+        if no_room > 0 {
+            let lang = self.interface_language;
+            let line = lang.tn(
+                no_room,
+                "{n} event keeps its categories as they were on its server: too many changes are waiting to be sent.",
+                "{n} events keep their categories as they were on their servers: too many changes are waiting to be sent.",
+            );
+            self.undo_said.push(mailcraft_i18n::fmt(line, &[("n", &no_room.to_string())]));
+        }
+    }
+
     fn swap(&mut self, u: Undo) -> Undo {
         let now = std::mem::take(&mut self.mailbox);
         let (back, said) = crate::undo::keep_in_step(u.mailbox, &u.touched, &now, self.interface_language);
-        // Undone, the step is to be done again from here: what that does is the way back.
-        let touched = crate::undo::touched(&now, &back);
         self.mailbox = back;
         self.recount(&now);
         // The counts of the mailbox as it was, brought in step with what this puts back, under
@@ -3179,11 +3892,43 @@ impl Session {
             .filter(|(at, _)| *at == counted)
             .and_then(|(_, mut counts)| Arc::make_mut(&mut counts).apply(&changes).then_some((after, counts)));
         self.undo_said = said;
+        self.tell_events_again(&now, &u.touched);
+        // The contacts it puts back go to their servers as such (#1917): undone after a change
+        // went up, the server is told the opposite.
+        let (no_room, read_only) = crate::cmd::contacts_remote::after_undo(&mut self.mailbox, &now, &u.touched);
+        if no_room > 0 {
+            let line = self.interface_language.tn(
+                no_room as u64,
+                "{n} contact isn't undone: too many changes are waiting to be sent to its server.",
+                "{n} contacts aren't undone: too many changes are waiting to be sent to their servers.",
+            );
+            self.undo_said.push(mailcraft_i18n::fmt(line, &[("n", &no_room.to_string())]));
+        }
+        if read_only > 0 {
+            let line = self.interface_language.tn(
+                read_only as u64,
+                "{n} contact isn't undone: its contacts folder can only be read now.",
+                "{n} contacts aren't undone: their contacts folders can only be read now.",
+            );
+            self.undo_said.push(mailcraft_i18n::fmt(line, &[("n", &read_only.to_string())]));
+        }
+        // Undone, the step is to be done again from here: what that does is the way back (with
+        // the events it told their servers of again).
+        let touched = crate::undo::touched(&now, &self.mailbox);
         // Where each message is, is looked at afresh.
         self.graph_index = Default::default();
         self.ews_run_cut.clear();
+        self.run_had.clear();
         let mail = u.mail;
-        let cur = Undo { label: u.label, mailbox: now, touched, sel: std::mem::replace(&mut self.sel, u.sel), folder: self.view.folder, mail };
+        let cur = Undo {
+            token: u.token,
+            label: u.label,
+            mailbox: now,
+            touched,
+            sel: std::mem::replace(&mut self.sel, u.sel),
+            folder: self.view.folder,
+            mail,
+        };
         self.rev += 1;
         self.restored = self.restored.wrapping_add(1);
         self.dirty = true;
@@ -3207,16 +3952,18 @@ impl Session {
 
     /// Whether undoing the last step (or redoing, `redo`) would take away the event, contact or
     /// task `item` as it is now (#494: what the owner is changing in a window or the dialog goes
-    /// with it).
+    /// with it). Worked out of the mailbox the undo runs on (`Session::as_run_finds`).
     pub fn undo_removes(&self, redo: bool, item: Id) -> bool {
         let Some(step) = (if redo { self.redo.last() } else { self.history.last() }) else { return false };
-        let uid = |m: &mailcraft_model::Mailbox| m.event(item).map(|e| e.uid.clone());
-        let event = uid(&self.mailbox).is_some() && uid(&step.mailbox) != uid(&self.mailbox);
-        // (A contact the step didn't touch stays, as undo leaves it: the step's snapshot may
-        // hold fewer, or other, contacts than there are now.)
-        let there = |m: &mailcraft_model::Mailbox| m.event(item).is_some() || m.task(item).is_some();
-        let other = there(&self.mailbox) && !there(&step.mailbox);
-        let contact = self.mailbox.contact(item).is_some() && step.mailbox.contact(item).is_none() && step.touched.changed_contact(item);
+        let ahead = self.as_run_finds();
+        let now: &Mailbox = &ahead;
+        let uid = |m: &Mailbox| m.event(item).map(|e| e.uid.clone());
+        // (An event or a contact the step didn't touch stays, as undo leaves it (#1674): the
+        // step's snapshot may hold fewer, or other, than there are now, since a download.)
+        let event = uid(now).is_some() && uid(&step.mailbox) != uid(now) && crate::undo::event_as_then(&step.mailbox, &step.touched, now, item);
+        let there = |m: &Mailbox| m.event(item).is_some() || m.task(item).is_some();
+        let other = now.task(item).is_some() && !there(&step.mailbox);
+        let contact = now.contact(item).is_some() && step.mailbox.contact(item).is_none() && step.touched.changed_contact(item);
         event || other || contact
     }
 
@@ -3227,6 +3974,16 @@ impl Session {
         match (step.mailbox.messages.get(&message), self.mailbox.messages.get(&message)) {
             (Some(then), Some(now)) => !Arc::ptr_eq(then, now) && then != now,
             (then, now) => then.is_some() != now.is_some(),
+        }
+    }
+
+    /// How undoing the last step (or redoing, `redo`) would change the message `message` (#950):
+    /// `(takes it away, puts it in an Outbox)`.
+    pub fn undo_takes_or_queues(&self, redo: bool, message: Id) -> (bool, bool) {
+        let Some(step) = (if redo { self.redo.last() } else { self.history.last() }) else { return (false, false) };
+        match step.mailbox.messages.get(&message) {
+            None => (true, false),
+            Some(then) => (false, step.mailbox.folder(then.folder).is_some_and(|f| f.kind == mailcraft_model::FolderKind::Outbox)),
         }
     }
 
@@ -3264,11 +4021,13 @@ impl Session {
     /// What undoing the last step (or redoing, `redo`) would take away: the messages, drafts
     /// among them, and the contacts, events, tasks, calendars and categories, each of those
     /// named by its kind and id (a category by its name). Read off the mailbox the undo itself
-    /// makes, by the merge it runs (on a copy, O(n), once for both).
+    /// makes, by the merge it runs (on a copy, O(n), once for both), from the mailbox it runs on
+    /// (`Session::as_run_finds`: the zone settled, #1674).
     pub fn undo_takes(&self, redo: bool) -> (Vec<Id>, Vec<String>) {
         let Some(step) = (if redo { self.redo.last() } else { self.history.last() }) else { return (Vec::new(), Vec::new()) };
-        let (back, _) = crate::undo::keep_in_step(step.mailbox.clone(), &step.touched, &self.mailbox, self.interface_language);
-        let now = &self.mailbox;
+        let ahead = self.as_run_finds();
+        let now: &Mailbox = &ahead;
+        let (back, _) = crate::undo::keep_in_step(step.mailbox.clone(), &step.touched, now, self.interface_language);
         let taken = now.messages.keys().filter(|k| !back.messages.contains_key(k)).copied().collect();
         let categories_gone = |now: &[Category], to: &[Category]| -> Vec<String> {
             now.iter().filter(|c| !to.iter().any(|t| t.name.to_lowercase() == c.name.to_lowercase())).map(|c| c.name.to_lowercase()).collect()
@@ -3289,42 +4048,273 @@ impl Session {
         (taken, gone)
     }
 
+    /// The categories that undoing (`redo`: redoing) would have a job delete on their account's
+    /// server (#661), which nothing had to be deleted there before: known there, and off the list
+    /// here, kept here alone or written in other letters after it. Worked out as the undo would, on a copy, as for
+    /// [`Session::undo_takes_mail`].
+    pub fn undo_deletes_categories(&self, redo: bool) -> Vec<String> {
+        self.undo_category_deletes(redo).into_iter().map(|(_, name)| name).collect()
+    }
+
+    /// Whether undoing (`redo`: redoing) would take away contacts and the like for good besides
+    /// the categories it has deleted in Outlook, which the owner's question names on their own
+    /// (#661). Those are known by the label [`Session::undo_takes`] gives a category of an
+    /// account's own list, each deletion standing for one item at most, so that two the label
+    /// can't tell apart still leave one to be said; anything else, a category of another spelling
+    /// too, is said as it is.
+    pub fn undo_removes_more_than_outlooks(&self, redo: bool) -> bool {
+        let mut outlook: Vec<String> =
+            self.undo_category_deletes(redo).into_iter().map(|(owner, name)| format!("category {owner} {}", name.to_lowercase())).collect();
+        self.undo_removed_items(redo).iter().any(|item| match outlook.iter().position(|o| o == item) {
+            Some(i) => {
+                outlook.swap_remove(i);
+                false
+            }
+            None => true,
+        })
+    }
+
+    /// [`Session::undo_deletes_categories`], each with the account whose server it is deleted on.
+    fn undo_category_deletes(&self, redo: bool) -> Vec<(Id, String)> {
+        let Some(step) = (if redo { self.redo.last() } else { self.history.last() }) else { return Vec::new() };
+        // (No list written there, now or then: nothing to work out.)
+        if self.mailbox.category_writes.is_empty() && step.mailbox.category_writes.is_empty() {
+            return Vec::new();
+        }
+        let (back, _) = crate::undo::keep_in_step(step.mailbox.clone(), &step.touched, &self.mailbox, self.interface_language);
+        let same = mailcraft_model::sync::same_category;
+        // What a job is to delete there: known there and not on the list here (or kept here
+        // alone), or on it in other letters (`Some`: those), which the server can't rename: it is
+        // deleted there and made again.
+        let to_delete = |mb: &Mailbox, owner: Id| -> Vec<(String, Option<String>)> {
+            let (Some(synced), Some(list)) = (mb.synced_categories.get(&owner), mb.account_categories.get(&owner)) else { return Vec::new() };
+            let mut out = Vec::new();
+            for was in synced {
+                match list.iter().find(|c| same(&c.name, &was.name)).filter(|c| !mb.category_is_local(owner, &c.name)) {
+                    None => out.push((was.name.clone(), None)),
+                    Some(c) if c.name != was.name => out.push((was.name.clone(), Some(c.name.clone()))),
+                    Some(_) => {}
+                }
+            }
+            out
+        };
+        let mut names = Vec::new();
+        for owner in back.category_writes.iter().filter(|id| back.synced_categories.contains_key(id)) {
+            let already = to_delete(&self.mailbox, *owner);
+            // Deleted there already, or written there in the same other letters already.
+            let is_new = |(name, respelled): &(String, Option<String>)| {
+                !already.iter().any(|(a, again)| same(a, name) && (again.is_none() || again == respelled))
+            };
+            names.extend(to_delete(&back, *owner).into_iter().filter(is_new).map(|(name, _)| (*owner, name)));
+        }
+        names
+    }
+
     /// What undoing (`redo`: redoing) would put back besides mail and the like: the accounts, or
     /// the rules and signatures, as they were; or a draft, taken away or as it was before. For
     /// the agent gate, which asks the owner first.
     pub fn undo_reverts(&self, redo: bool) -> Option<crate::agent::Class> {
+        self.undo_reverts_with(redo, || !self.undo_places(redo).is_empty() || !self.undo_rules_onto_server(redo).is_empty())
+    }
+
+    /// [`Session::undo_reverts`], told by `onto` whether the step puts mail or a rule on its way
+    /// onto another account's server ([`Session::undo_places`], [`Session::undo_rules_onto_server`]),
+    /// for a question that has worked those out already: each works the undo out on a copy.
+    pub(crate) fn undo_reverts_with(&self, redo: bool, onto: impl FnOnce() -> bool) -> Option<crate::agent::Class> {
         use crate::agent::Class;
         let step = if redo { self.redo.last() } else { self.history.last() }?;
         let (to, now) = (&step.mailbox, &self.mailbox);
         if to.accounts != now.accounts {
             return Some(Class::Accounts);
         }
-        // A send-bearing change to an event that the mailbox hasn't got: the step brings it back.
-        let same = |a: &mailcraft_model::remote::EventChange, b: &mailcraft_model::remote::EventChange| {
-            b.send && a.account == b.account && a.kind == b.kind && a.event == b.event && a.token == b.token
-        };
-        if to.event_changes.iter().any(|c| c.send && !now.event_changes.iter().any(|n| same(c, n))) {
+        if self.undo_sends_items(redo) {
             return Some(Class::Send);
         }
-        // A to-do in a list shared with other people that the step changes, brings back or removes.
-        if crate::agent::changes_shared_tasks(now, to) {
+        // A message the step puts on its way onto another account's server again, or a rule it
+        // brings back or switches on that files mail there (#566): an agent's move there, or its
+        // rule that does, is a send too.
+        if onto() {
             return Some(Class::Send);
         }
-        // A to-do the step puts in an account's To Do, or the owner's answer about local to-dos.
-        if crate::agent::places_tasks(now, to) {
+        // A category kept on this computer alone that the step has go to Outlook (#661), as Add
+        // to Outlook asks.
+        if !self.undo_sends_categories(redo).is_empty() {
+            return Some(Class::Send);
+        }
+        // So does one it has made in Outlook again, or given another colour there: a deletion or
+        // a rename undone after it went there, a new one or a colour redone (#661).
+        if !self.undo_makes_categories(redo).is_empty() {
+            return Some(Class::Send);
+        }
+        // And one that has a server give its own mail and events another name (#851), as the
+        // rename asks.
+        if !self.undo_renames_on_server(redo).is_empty() {
+            return Some(Class::Send);
+        }
+        // And one the rules it puts back give mail, as the rule calls ask.
+        if !self.undo_rules_make_categories(redo).is_empty() {
             return Some(Class::Send);
         }
         if self.undo_deletes(redo) {
             return Some(Class::Delete);
         }
-        if to.rules != now.rules || to.signatures != now.signatures || to.junk != now.junk || to.junk_accounts != now.junk_accounts {
-            return Some(Class::Settings);
+        self.undo_changes_settings(redo).then_some(Class::Settings)
+    }
+
+    /// Whether undoing (`redo`: redoing) puts back rules, signatures, Safe and Blocked Senders or
+    /// Public keys: a change of settings, whatever else it does (#661).
+    pub fn undo_changes_settings(&self, redo: bool) -> bool {
+        let Some(step) = (if redo { self.redo.last() } else { self.history.last() }) else { return false };
+        let (to, now) = (&step.mailbox, &self.mailbox);
+        // (Public keys imported or removed, #30: the keys Digital signatures are checked with.)
+        to.rules != now.rules
+            || to.signatures != now.signatures
+            || to.junk != now.junk
+            || to.junk_accounts != now.junk_accounts
+            || step.touched.changed_keys()
+    }
+
+    /// Whether undoing (`redo`: redoing) puts back a change that other people see or that goes to
+    /// an account's To Do: a meeting's, a to-do's in a list shared with other people, a to-do put
+    /// in an account's To Do, or the owner's answer about local to-dos.
+    pub fn undo_sends_items(&self, redo: bool) -> bool {
+        let Some(step) = (if redo { self.redo.last() } else { self.history.last() }) else { return false };
+        let (to, now) = (&step.mailbox, &self.mailbox);
+        // A send-bearing change to an event that the mailbox hasn't got: the step brings it back.
+        let same = |a: &mailcraft_model::remote::EventChange, b: &mailcraft_model::remote::EventChange| {
+            b.send && a.account == b.account && a.kind == b.kind && a.event == b.event && a.token == b.token
+        };
+        to.event_changes.iter().any(|c| c.send && !now.event_changes.iter().any(|n| same(c, n)))
+            // A to-do in a list shared with other people that the step changes, brings back or
+            // removes.
+            || crate::agent::changes_shared_tasks(now, to)
+            // A to-do the step puts in an account's To Do, or the owner's answer about local
+            // to-dos.
+            || crate::agent::places_tasks(now, to)
+    }
+
+    /// The categories of a list kept in step with Outlook, kept on this computer alone now, that
+    /// undoing (`redo`: redoing) would have go to Outlook (#661): the step took them off what is
+    /// kept here, as Add to Outlook does, and the next job makes them there. Worked out as the
+    /// undo would, on a copy, as for [`Session::undo_deletes_categories`]; each name once.
+    pub fn undo_sends_categories(&self, redo: bool) -> Vec<String> {
+        if self.mailbox.local_categories.is_empty() {
+            return Vec::new();
         }
-        // Public keys imported or removed (#30): the keys Digital signatures are checked with.
-        if step.touched.changed_keys() {
-            return Some(Class::Settings);
+        let Some(step) = (if redo { self.redo.last() } else { self.history.last() }) else { return Vec::new() };
+        let (back, _) = crate::undo::keep_in_step(step.mailbox.clone(), &step.touched, &self.mailbox, self.interface_language);
+        let same = mailcraft_model::sync::same_category;
+        let mut names: Vec<String> = Vec::new();
+        for (owner, local) in &self.mailbox.local_categories {
+            let (Some(synced), Some(list)) = (back.synced_categories.get(owner), back.account_categories.get(owner)) else { continue };
+            for name in local {
+                // (One the server has is not sent there: an address the step changed is the other
+                // mailbox's, whose server may have it.)
+                let goes =
+                    list.iter().any(|c| same(&c.name, name)) && !back.category_is_local(*owner, name) && !synced.iter().any(|c| same(&c.name, name));
+                if goes && !names.iter().any(|n| same(n, name)) {
+                    names.push(name.clone());
+                }
+            }
         }
-        None
+        names
+    }
+
+    /// The categories of a list kept in step with Outlook that undoing (`redo`: redoing) would
+    /// have the next job make in Outlook (`true`) or give another colour there (`false`), and that
+    /// it wouldn't now (#661): a deletion or a rename undone after it went there, a new one or a
+    /// colour redone. Besides those [`Session::undo_sends_categories`] names, kept on this computer
+    /// only now. Worked out as the undo would, on a copy, as for
+    /// [`Session::undo_deletes_categories`]; each name once.
+    pub fn undo_makes_categories(&self, redo: bool) -> Vec<(String, bool)> {
+        let Some(step) = (if redo { self.redo.last() } else { self.history.last() }) else { return Vec::new() };
+        // (No list written there, now or then: nothing to work out.)
+        if self.mailbox.category_writes.is_empty() && step.mailbox.category_writes.is_empty() {
+            return Vec::new();
+        }
+        let (back, _) = crate::undo::keep_in_step(step.mailbox.clone(), &step.touched, &self.mailbox, self.interface_language);
+        let same = mailcraft_model::sync::same_category;
+        let mut out: Vec<(String, bool)> = Vec::new();
+        for owner in back.category_writes.iter().filter(|id| back.synced_categories.contains_key(id)) {
+            let already = self.mailbox.categories_to_write(*owner);
+            for (name, made) in back.categories_to_write(*owner) {
+                // Going there anyway, or sent from this computer (said on its own).
+                let going = already.iter().any(|(n, m)| same(n, &name) && *m == made);
+                if !going && !self.mailbox.category_is_local(*owner, &name) && !out.iter().any(|(n, _)| same(n, &name)) {
+                    out.push((name, made));
+                }
+            }
+        }
+        out
+    }
+
+    /// The renames of categories that undoing (`redo`: redoing) would have a server carry out on
+    /// its own mail and events (#851): a rename taken back after its new name reached the server,
+    /// as the account, the old name and the one given again in its place. Also while the list may
+    /// not be changed on its server just now: the rename waits, and goes when it may again.
+    pub fn undo_renames_on_server(&self, redo: bool) -> Vec<(Id, String, String)> {
+        let Some(step) = (if redo { self.redo.last() } else { self.history.last() }) else { return Vec::new() };
+        if self.mailbox.synced_categories.is_empty() && step.mailbox.synced_categories.is_empty() {
+            return Vec::new();
+        }
+        let (back, _) = crate::undo::keep_in_step(step.mailbox.clone(), &step.touched, &self.mailbox, self.interface_language);
+        let mut out = Vec::new();
+        for (owner, sweeps) in &back.category_sweeps {
+            // (Only what waits now: one that stopped waiting and is kept until the list's next
+            // job starts again with the undo.)
+            let now = self.mailbox.standing_sweeps(*owner);
+            for s in sweeps.iter().filter(|s| !now.iter().any(|n| n.from == s.from && n.to == s.to)) {
+                out.push((*owner, s.from.clone(), s.to.clone()));
+            }
+        }
+        out
+    }
+
+    /// The categories the rules that undoing (`redo`: redoing) puts back give mail and put on a list
+    /// kept in step with Outlook that hasn't got them, each with that list's account, so that the
+    /// next job makes them there (#661); and those the rules give the mail that a step putting back
+    /// what they read (the Safe or Blocked Senders, an account's address) lets reach them, or
+    /// all of them when it changes a list of categories (#566). None when the step leaves the
+    /// rules, what they read and the lists as they are.
+    pub fn undo_rules_make_categories(&self, redo: bool) -> Vec<(String, Id)> {
+        let Some(step) = (if redo { self.redo.last() } else { self.history.last() }) else { return Vec::new() };
+        if step.mailbox.rules == self.mailbox.rules && !crate::agent::undo_changes_what_rules_read(&self.mailbox, &step.mailbox) {
+            return Vec::new();
+        }
+        let (back, _) = crate::undo::keep_in_step(step.mailbox.clone(), &step.touched, &self.mailbox, self.interface_language);
+        crate::agent::undo_rules_in_outlook(&self.mailbox, &back)
+    }
+
+    /// The accounts on whose servers undoing the last step (or redoing, `redo`) puts a message on
+    /// its way again: one brought back that waits to be made there and doesn't wait now (#566).
+    /// Read off the queue the undo itself makes, by the merge it runs (on a copy, O(n)).
+    pub fn undo_places(&self, redo: bool) -> Vec<Id> {
+        use mailcraft_model::Queued;
+        let Some(step) = (if redo { self.redo.last() } else { self.history.last() }) else { return Vec::new() };
+        let (back, _) = crate::undo::keep_in_step(step.mailbox.clone(), &step.touched, &self.mailbox, self.interface_language);
+        let waits = |q: &Queued| match q {
+            Queued::PlaceMessage { account, message, .. } => Some((*account, *message)),
+            _ => None,
+        };
+        let now: std::collections::BTreeSet<(Id, Id)> = self.mailbox.queued.iter().filter_map(waits).collect();
+        let mut onto: Vec<Id> = back.queued.iter().filter_map(waits).filter(|w| !now.contains(w)).map(|(account, _)| account).collect();
+        onto.sort_unstable();
+        onto.dedup();
+        onto
+    }
+
+    /// The accounts on whose servers rules file mail, when undoing the last step (or redoing,
+    /// `redo`) changes the rules and leaves such rules switched on (#566), as
+    /// [`Session::undo_places`] reads a message.
+    pub fn undo_rules_onto_server(&self, redo: bool) -> Vec<Id> {
+        let Some(step) = (if redo { self.redo.last() } else { self.history.last() }) else { return Vec::new() };
+        crate::agent::undo_rules_onto_another_server(self, &step.mailbox)
+    }
+
+    /// [`Session::undo_rules_onto_server`], and the names of those rules, quoted.
+    pub(crate) fn undo_rules_onto_named(&self, redo: bool) -> (Vec<String>, Vec<Id>) {
+        let Some(step) = (if redo { self.redo.last() } else { self.history.last() }) else { return (Vec::new(), Vec::new()) };
+        crate::agent::undo_rules_onto_named(self, &step.mailbox)
     }
 
     /// Whether undoing the last step (or redoing, `redo`) would take away contacts, events, tasks,
@@ -3339,10 +4329,19 @@ impl Session {
         self.undo_takes(redo).1
     }
 
+    /// Whether undoing the last step (or redoing, `redo`) writes to people or puts mail or a rule
+    /// on its way onto another account's server, which [`Session::undo_reverts`] asks as Send when
+    /// the accounts it puts back don't come first: a yes to those covers this too, as it does a
+    /// delete (#566).
+    pub fn undo_sends(&self, redo: bool) -> bool {
+        self.undo_sends_items(redo) || !self.undo_places(redo).is_empty() || !self.undo_rules_onto_server(redo).is_empty()
+    }
+
     /// Whether undoing the last step (or redoing, `redo`) needs Delete: it takes away contacts and
-    /// the like, a draft (or puts back an earlier version of one), or another message.
+    /// the like, a draft (or puts back an earlier version of one), or another message, or has a
+    /// category deleted in Outlook (#661).
     pub fn undo_deletes(&self, redo: bool) -> bool {
-        if !self.undo_drafts(redo).is_empty() {
+        if !self.undo_drafts(redo).is_empty() || !self.undo_deletes_categories(redo).is_empty() {
             return true;
         }
         let (taken, items) = self.undo_takes(redo);
@@ -3462,7 +4461,7 @@ impl Session {
         if let Some(reason) = (spec.enabled)(self) {
             // A command that only lacks a selection still runs on what the caller names, and on
             // what it names wrongly, which the command refuses for what it is (#553).
-            let named = spec.selection && ["id", "ids", "message"].iter().any(|k| params.get(*k).is_some());
+            let named = spec.selection && ["id", "ids", "items", "message"].iter().any(|k| params.get(*k).is_some());
             if !named {
                 return Err(CmdError::Disabled(reason.to_string()));
             }
@@ -3482,7 +4481,8 @@ impl Session {
         // copy of the mailbox is taken for it: the import is one step, kept when it ends
         // ([`crate::import_pst::finish`]), and a batch that fails takes itself out again.
         let staged = id == "file.importPst" && self.agent.is_none() && params.get("staged").and_then(Value::as_bool) == Some(true);
-        let history = spec.mutates && !matches!(id, "edit.undo" | "edit.redo") && !background && !staged;
+        // (Undo Send puts a message back to write: no step of the history may put it in the Outbox again, #950.)
+        let history = spec.mutates && !matches!(id, "edit.undo" | "edit.redo" | "compose.undoSend") && !background && !staged;
         // The computer may have been carried to another zone since the last command: the
         // mailbox is put by that zone's clock first, and that is not this command's to undo.
         self.settle_zone();
@@ -3503,6 +4503,10 @@ impl Session {
         // what it changed, [`FolderCounts::apply`](crate::counts::FolderCounts::apply).)
         // (Undo and Redo bring the counts in step with what they put back themselves, [`Session::swap`].)
         let steps = matches!(id, "edit.undo" | "edit.redo");
+        if steps {
+            // A message put back as it was before its pictures were told is told again.
+            self.drawn_checked.clear();
+        }
         let counts_aside = if spec.mutates && !steps { self.counts_cache.take() } else { None };
         // How many messages the command finds, beside the revision the counts are keyed by
         // ([`Session::counts_through`]); no copy of the mailbox is needed for it.
@@ -3577,9 +4581,9 @@ impl Session {
         // gone for good, an appointment the owner is changing taken away) is undone, whatever
         // path it took there.
         let result = match (result, &self.agent) {
-            (Ok(_), Some(_)) if self.owner_changing.iter().any(|e| gone_in(&before.mailbox, &self.mailbox, *e)) => Err(CmdError::Failed(format!(
-                "`{id}` would take away an appointment, a contact or a task the owner is changing in the window and hasn't saved, and the owner wasn't asked about that; nothing was changed. Try again once the owner has saved or closed it"
-            ))),
+            (Ok(_), Some(_)) if let Some(taken) = self.owner_changing.iter().filter_map(|e| taken_from(&before.mailbox, &self.mailbox, *e)).max() => {
+                Err(taken.refusal(id))
+            }
             // What is written in the message the owner is writing is theirs until it is closed
             // (#494): an agent doesn't change it, nor empty it and save that over its draft (#577).
             (Ok(_), Some(_)) if changes_owners_message(compose.as_ref(), self.compose.as_ref()) => Err(CmdError::Failed(format!(
@@ -3590,6 +4594,12 @@ impl Session {
             }
             (r, _) => r,
         };
+        // What an agent made of the contacts, or gave them an address of, isn't trusted for
+        // pictures until the owner edits it (#891). Whatever the command, not only those that
+        // change the mailbox: `file.open` with `data` doesn't, and brings the agent's own contacts.
+        if result.is_ok() && self.agent.is_some() {
+            crate::agent::mark_agent_contacts(&before.mailbox, &mut self.mailbox);
+        }
         match &result {
             Ok(_) => {
                 // Whatever put the caret there (a format, an account, a signature, an undo, an agent).
@@ -3708,10 +4718,61 @@ impl Session {
     }
 }
 
-/// Whether the event, contact or task `item` that `before` has is gone from `after`.
-fn gone_in(before: &Mailbox, after: &Mailbox, item: Id) -> bool {
+/// How an agent's command would take an item the owner is changing from under them
+/// ([`taken_from`]): the worse of two is what its refusal says.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Taken {
+    /// An appointment that stays, but moved: its times or its calendar.
+    Moved,
+    /// A series with a day cancelled, or moved out of it as an appointment of its own.
+    Days,
+    /// Gone from the mailbox.
+    Gone,
+}
+
+impl Taken {
+    /// The refusal of the agent's command `id`, in words that say what it would have done: "take
+    /// away" only for what would really go, and a move and a day taken out of a series each in
+    /// words of its own.
+    fn refusal(self, id: &str) -> CmdError {
+        match self {
+            Taken::Gone => CmdError::Failed(format!(
+                "`{id}` would take away an appointment, a contact or a task the owner is changing in the window and hasn't saved, and the owner wasn't asked about that; nothing was changed. Try again once the owner has saved or closed it"
+            )),
+            Taken::Moved => failed!(
+                "`{id}` would move an appointment that is open with changes the owner hasn't saved (to another time or another calendar), and the owner wasn't asked about that; nothing was changed. Try again once the owner has saved or closed its window",
+                id
+            ),
+            Taken::Days => failed!(
+                "`{id}` would change which days a series has (cancel one of them, or move one out of it as an appointment of its own) while that series is open with changes the owner hasn't saved, and the owner wasn't asked about that; nothing was changed. Try again once the owner has saved or closed its window",
+                id
+            ),
+        }
+    }
+}
+
+/// Whether the event, contact or task `item` that `before` has is taken from under the owner in
+/// `after`, and how: gone, or, for an event, with a day cancelled or moved out of its series, or
+/// moved (its times or its calendar). `None` when it is as it was there.
+fn taken_from(before: &Mailbox, after: &Mailbox, item: Id) -> Option<Taken> {
     let there = |m: &Mailbox| m.event(item).is_some() || m.contact(item).is_some() || m.task(item).is_some();
-    there(before) && !there(after)
+    if there(before) && !there(after) {
+        return Some(Taken::Gone);
+    }
+    // Cancelling or moving a day leaves its series present, but still changes the item being
+    // edited. Protect the whole series conservatively while any of it is unsaved.
+    match (before.event(item), after.event(item)) {
+        (Some(was), Some(now)) => {
+            let skipped: HashSet<Date> = was.exceptions.iter().copied().collect();
+            // (Both at once is said as the worse of the two, as for two items.)
+            if now.exceptions.iter().any(|day| !skipped.contains(day)) {
+                return Some(Taken::Days);
+            }
+            let moved = was.start != now.start || was.end != now.end || was.calendar != now.calendar;
+            moved.then_some(Taken::Moved)
+        }
+        _ => None,
+    }
 }
 
 /// Whether the message being written is `before` but for where the cursor is (#494): moving it,
@@ -3745,8 +4806,7 @@ fn wipes_history(id: &str) -> bool {
 
 /// Whether an attachment is a calendar part (an invitation, an answer to one).
 pub(crate) fn is_calendar_part(a: &Attachment) -> bool {
-    let kind = a.mime.trim().to_ascii_lowercase();
-    kind.starts_with("text/calendar") || kind.starts_with("application/ics") || a.name.to_ascii_lowercase().ends_with(".ics")
+    a.is_calendar()
 }
 
 /// A calendar part small enough to be read ([`MAX_CALENDAR_PART`]), by its size before it is
@@ -3802,6 +4862,19 @@ fn in_memory(m: &Message) -> u64 {
     let body = m.body.text.len().saturating_add(m.body.html.as_ref().map_or(0, String::len)).saturating_add(m.hidden_text.len());
     let original = m.original.as_ref().map_or(0, |o| o.data.len() as u64);
     m.attachments.iter().fold((body as u64).saturating_add(original), |n, a| n.saturating_add(a.data.len() as u64))
+}
+
+/// Whether message `m` holds in memory content that a save keeps outside the mailbox file (a
+/// body or a file of more than [`crate::store::INLINE_MAX`] bytes, an original), and so may go
+/// back to naming it ([`Session::let_go_of_content`]).
+#[cfg(not(target_arch = "wasm32"))]
+fn may_go(m: &Message) -> bool {
+    let out = |n: usize| n > crate::store::INLINE_MAX;
+    out(m.body.text.len())
+        || m.body.html.as_ref().is_some_and(|h| out(h.len()))
+        || out(m.hidden_text.len())
+        || m.attachments.iter().any(|a| out(a.data.len()))
+        || m.original.as_ref().is_some_and(|o| !o.data.is_empty())
 }
 
 /// A body an opening for a window left on disk though the memory budget holds it, to be read

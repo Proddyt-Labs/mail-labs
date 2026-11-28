@@ -14,8 +14,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use mailcraft_model::{Attachment, Message};
-
 /// Largest attached picture that is looked at, in bytes.
 pub const MAX_PICTURE_BYTES: usize = 24 * 1024 * 1024;
 
@@ -35,9 +33,12 @@ pub const MAX_TEXTURE_SIDE: u32 = 8_192;
 pub const MAX_TEXTURE_PIXELS: u64 = 8_000_000;
 
 /// Most pictures kept, and the most memory their textures may take, in bytes. The least recently
-/// shown go first.
+/// shown go first; what is on screen is never let go of for another, and a picture past these
+/// once that is done is a stand-in. So the count stays at what one screen of a newsletter may show
+/// at once (rows of small pictures), and the bytes hold two of the largest textures
+/// ([`MAX_TEXTURE_PIXELS`], 32 MB each) with a screen of others beside them.
 pub const CACHE_PICTURES: usize = 64;
-pub const CACHE_BYTES: usize = 160 * 1024 * 1024;
+pub const CACHE_BYTES: usize = 96 * 1024 * 1024;
 
 /// Seconds without a picture being shown after which the textures are let go.
 const IDLE_SECONDS: f64 = 5.0;
@@ -51,8 +52,9 @@ pub const MAX_PICTURES_PER_MESSAGE: usize = 200;
 /// Most pictures from the web that are kept, and the most their bytes (as they came) may take.
 /// The least recently shown go first. Nothing of them is written to disk from here (the host
 /// may keep what it downloaded, for the next start: `Services::picture_cache`).
-pub const REMOTE_PICTURES: usize = 300;
-pub const REMOTE_BYTES: usize = 96 * 1024 * 1024;
+/// (Those of a message on screen are kept whatever these say: each is asked for at every frame.)
+pub const REMOTE_PICTURES: usize = 150;
+pub const REMOTE_BYTES: usize = 48 * 1024 * 1024;
 
 /// The frame the window is at: the main window's count, whichever window is being laid out, so
 /// that what was shown last can be told in all of them alike.
@@ -65,44 +67,6 @@ pub fn frame(ctx: &egui::Context) -> u64 {
 pub fn is_remote(src: &str) -> bool {
     let src = src.trim_start();
     ["http://", "https://"].iter().any(|scheme| src.get(..scheme.len()).is_some_and(|start| start.eq_ignore_ascii_case(scheme)))
-}
-
-/// The attachment a `cid:` address refers to. The address is compared with each part's
-/// `Content-ID` as written, then with `%xx` decoded, then without regard to letter case.
-pub fn attachment<'a>(message: &'a Message, src: &str) -> Option<&'a Attachment> {
-    let src = src.trim();
-    let id = src.get(..4).filter(|scheme| scheme.eq_ignore_ascii_case("cid:")).and_then(|_| src.get(4..))?;
-    let id = id.trim().trim_start_matches('<').trim_end_matches('>');
-    if id.is_empty() {
-        return None;
-    }
-    let decoded = percent_decode(id);
-    let parts = || message.attachments.iter().filter(|a| !a.content_id.is_empty());
-    parts()
-        .find(|a| a.content_id == id)
-        .or_else(|| parts().find(|a| a.content_id == decoded))
-        .or_else(|| parts().find(|a| a.content_id.eq_ignore_ascii_case(id) || a.content_id.eq_ignore_ascii_case(&decoded)))
-}
-
-/// `%40` and the like decoded; anything that isn't a valid escape, or doesn't give UTF-8, is left.
-fn percent_decode(text: &str) -> String {
-    let bytes = text.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while let Some(&b) = bytes.get(i) {
-        let escape = (b == b'%').then(|| text.get(i + 1..i + 3)).flatten().and_then(|hex| u8::from_str_radix(hex, 16).ok());
-        match escape {
-            Some(byte) => {
-                out.push(byte);
-                i += 3;
-            }
-            None => {
-                out.push(b);
-                i += 1;
-            }
-        }
-    }
-    String::from_utf8(out).unwrap_or_else(|_| text.to_string())
 }
 
 /// The kinds of picture shown, by what their bytes are: in a message (and in a signature), and
@@ -356,6 +320,16 @@ impl Pictures {
         self.remote.clear();
     }
 
+    /// Let go of every picture kept, its texture and what it was decoded from, and of the
+    /// pictures from the web (the window is out of sight, [`crate::out_of_sight`]): each is made
+    /// again, and asked for again, when it is next shown.
+    pub fn let_go(&mut self) {
+        self.entries.clear();
+        self.remote.clear();
+        self.decoded_in = None;
+        self.asked_at = None;
+    }
+
     /// Keep what became of the picture at `url`.
     pub fn set_remote(&mut self, url: Arc<str>, state: Remote, frame: u64) {
         self.remote.insert(url, RemoteEntry { state, used: frame });
@@ -524,6 +498,7 @@ impl Pictures {
 mod tests {
     use super::*;
     use crate::reading::tests::{gif, jpeg, png, webp};
+    use mailcraft_model::{Attachment, Message};
 
     #[test]
     fn pictures_are_found_by_their_content_id() {
@@ -532,6 +507,10 @@ mod tests {
             attachments: vec![Attachment::new("plain.txt", "text/plain", vec![2]), part("logo@example.org"), part("Image 2@X")],
             ..Message::default()
         };
+        // (The pane finds them as the phone and the attachment list do: `part_for`.)
+        fn attachment<'a>(m: &'a Message, src: &str) -> Option<&'a Attachment> {
+            mailcraft_model::shown::part_for(&m.attachments, src).map(|(_, a)| a)
+        }
         let found = |src: &str| attachment(&m, src).map(|a| a.content_id.as_str());
         assert_eq!(found("cid:logo@example.org"), Some("logo@example.org"));
         assert_eq!(found(" CID:logo@example.org "), Some("logo@example.org"));
@@ -546,8 +525,6 @@ mod tests {
         }
         // A part without a Content-ID is never matched by an empty address.
         assert_eq!(attachment(&m, "cid:"), None);
-        assert_eq!(percent_decode("a%2"), "a%2");
-        assert_eq!(percent_decode("%ff%fe"), "%ff%fe");
     }
 
     #[test]

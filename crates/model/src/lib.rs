@@ -11,14 +11,24 @@
 mod address;
 pub mod auth_results;
 pub mod auto_replies;
+pub mod brands;
 mod calendar;
 pub mod confusables;
 mod contact;
+pub mod contact_sync;
+#[cfg(test)]
+mod contact_sync_tests;
 pub mod dav;
+pub mod dav_down;
+mod dav_server;
+pub mod device_limits;
+#[cfg(test)]
+mod device_limits_tests;
 pub mod digital_signature;
 mod ews_server;
 mod feed;
 pub mod gmail;
+pub mod headers;
 mod jmap_server;
 mod junk;
 pub mod keep;
@@ -33,6 +43,7 @@ mod note;
 #[cfg(test)]
 mod keep_tests;
 mod offline;
+pub mod outlook_colors;
 pub mod pictures;
 pub mod pop;
 pub mod protected;
@@ -47,57 +58,83 @@ mod report_tests;
 pub mod rich;
 mod rule;
 pub mod search;
+pub mod send_warnings;
 pub mod sender_warnings;
+pub mod senders;
+#[cfg(test)]
+mod senders_tests;
 pub mod shown;
 pub mod signature;
+pub mod subscription;
 pub mod sync;
 mod task;
 pub mod thread_index;
+pub mod unsubscribe;
 pub mod update;
 pub mod words;
 pub mod zoned;
 
 use serde::{Deserialize, Serialize};
 
-pub use address::{Address, MAX_ADDRESS, format_list, format_list_capped, mailbox_address};
+pub use address::{Address, MAX_ADDRESS, format_list, format_list_capped, is_valid_email, mailbox_address};
 pub use calendar::{
     Attendee, Calendar, CalendarOwner, Event, Freq, ListedTwice, MAX_JOIN_LINK, MAX_OPENED_CALENDARS, Occurrence, OnlineMeeting, OnlineProvider,
     OpenedCalendar, Proposal, Recurrence, Response, ResponseOptions, Rights, ShowAs,
 };
 pub use contact::{Contact, ContactKey, KeyKind, Labeled, PostalAddress};
+<<<<<<< HEAD
 pub use ews_server::{EwsServer, is_exchange_online, is_microsoft_domain, is_within};
 pub use feed::{
     FEED_EVERY_SECS, FeedUrlError, MAX_FEED_ERROR, MAX_FEED_EVENTS, MAX_FEED_URL, MAX_FEEDS, Subscription, check_feed_url, is_private_address,
 };
+=======
+pub use dav_down::{DavAsk, DavAskCollection, DavCalendar, DavChange, DavDownload, DavKnown, DavListing, DavProblem, DavRead, DavReadState};
+pub use dav_server::{DavCollectionState, DavServer, origin_of};
+pub use device_limits::{DeviceLimits, PHONE_DEFAULTS, PHONE_DOWNLOAD, PHONE_KEEP, PHONE_STORAGE};
+pub use ews_server::{EwsServer, is_exchange_online, is_google_host, is_microsoft_domain, is_within};
+>>>>>>> upstream/main
 pub use gmail::{GmailCategory, is_gmail_host};
+pub use headers::{HeaderBlock, HeaderLine};
 pub use jmap_server::{JmapServer, MAX_JMAP_ID, is_jmap_id};
 pub use junk::{Added, JunkList, JunkLists, MAX_JUNK_ENTRIES, junk_entry, junk_key};
 pub use keep::{KeepLabel, KeepLink, KeepState, NoteFields, NoteItem, Secret};
 pub use load_limit::{MIN_ITEM_BYTES, from_json};
 pub use mailbox::{
-    Account, AccountKind, AsWritten, BETWEEN_MAILBOXES, COPY_INTO_OUTBOX, Category, Directory, DownloadInFull, FOLDERS_NOT_DELETED_YET,
-    FOLDERS_STAY_YET, Folder, FolderCounts, FolderKind, GREY_CATEGORY, GraphSwitch, IMPORTED, INTO_OUTBOX, MAX_FOLDER_DEPTH, MAX_FOLDERS, MAX_RULES,
-    MAX_SHARED, MAX_SNOOZE_AHEAD, MAX_SNOOZE_REFUSALS, MOVED_INTO_OUTBOX, MailIdentity, Mailbox, NOT_SENDING_YET, OAuth, OAuthProvider,
-    ONLY_SERVER_FOLDERS, PALETTE, Pending, Queued, Security, Server, ServerFavorites, ServerFolder, Settled, Snooze, preset_category_color,
+    Account, AccountKind, AsWritten, BETWEEN_MAILBOXES, COPY_INTO_OUTBOX, Category, DRAFT_MOVED_INTO_OUTBOX, Directory, DownloadInFull,
+    FOLDERS_NOT_DELETED_YET, FOLDERS_STAY_YET, Folder, FolderCounts, FolderKind, FollowUp, FollowUpsSettled, GREY_CATEGORY, GraphSwitch, IMPORTED,
+    INTO_OUTBOX, ImapStatus, MAX_CATEGORIES, MAX_FOLDER_DEPTH, MAX_FOLDERS, MAX_FOLLOW_UP_AHEAD, MAX_RULES, MAX_SHARED, MAX_SNOOZE_AHEAD,
+    MAX_SNOOZE_REFUSALS, MOVED_INTO_OUTBOX, MailIdentity, Mailbox, OAuth, OAuthProvider, ONLY_SERVER_FOLDERS, PALETTE, Pending, PendingFollowUp,
+    Queued, Security, Server, ServerFavorites, ServerFolder, Settled, Snooze, categories_read_only_text, category_key, lead_rank, leads,
+    sort_as_listed,
 };
 pub use mailcraft_time as time;
 pub use message::{
-    Answers, Attachment, Body, ContentRef, FlagStatus, Importance, KeptBody, MAX_HIDDEN_TEXT, MAX_ORIGINAL, MAX_ORIGINALS, Message, NOT_DOWNLOADED,
-    NOT_DOWNLOADED_NOTE, ORIGINAL_PATIENCE, ORIGINAL_TRIES, Original, PREVIEW_CHARS, RETURNED_LISTINGS, normalize_subject, size_label, size_label_in,
-    text_hash,
+    Answers, Attachment, Body, ContentRef, FlagStatus, Importance, KeptBody, MAX_HIDDEN_TEXT, MAX_ORIGINAL, MAX_ORIGINALS, MAX_READ_HEADER, Message,
+    NOT_DOWNLOADED, NOT_DOWNLOADED_NOTE, ORIGINAL_PATIENCE, ORIGINAL_TRIES, Original, PREVIEW_CHARS, RETURNED_LISTINGS, Sensitivity,
+    normalize_subject, size_label, size_label_in, text_hash,
 };
 pub use messages::Messages;
 pub use note::{JournalEntry, Note};
 pub use offline::{KeepOffline, OfflineWindow};
+pub use outlook_colors::preset_category_color;
 pub use remote::{AccountChoice, Origin};
 pub use rich::{RichBody, RichText};
-pub use rule::{Action, Condition, Keep, MAX_RULE_GONE, Rule, RuleGone, ServerRule};
+pub use rule::{
+    Action, Condition, FlagDue, Keep, MAX_RULE_GONE, MAX_WORD, MAX_WORDS_EACH, Marks, Matching, Rule, RuleClock, RuleGone, RuleWaiting, RulesWaiting,
+    ServerRule, Words, fold_exceptions, said, same_word,
+};
+pub use senders::{MAX_SENDER_ADDRESSES, SenderAddress, SenderProblem, clean_sender_addresses};
 pub use signature::Signature;
+<<<<<<< HEAD
 pub use task::{
     LocalTasks, MAX_TASK_GONE, STATUS_CATEGORIES, STATUS_CLOSED, STATUS_IN_PROGRESS, STATUS_TO_DO, SharedTaskList, SharedTaskLists, Task, TaskFields,
     TaskGone, TaskPatch, is_status_category,
 };
 pub use thread_index::{ThreadIndex, ThreadKey};
+=======
+pub use task::{LocalTasks, MAX_TASK_GONE, SharedTaskList, SharedTaskLists, Task, TaskFields, TaskGone, TaskPatch};
+pub use thread_index::{Joined, ThreadIndex, ThreadKey};
+>>>>>>> upstream/main
 
 /// An item's identity inside one mailbox. 0 means "not assigned yet".
 pub type Id = u64;
@@ -176,15 +213,25 @@ mod account_order_tests;
 #[cfg(test)]
 mod auth_results_tests;
 #[cfg(test)]
+mod auth_summary_tests;
+#[cfg(test)]
 mod auto_replies_tests;
 #[cfg(test)]
 mod calendar_rights_tests;
 #[cfg(test)]
 mod contact_key_tests;
 #[cfg(test)]
+<<<<<<< HEAD
 mod feed_tests;
+=======
+mod folder_order_tests;
+#[cfg(test)]
+mod gmail_labels_tests;
+>>>>>>> upstream/main
 #[cfg(test)]
 mod gmail_tests;
+#[cfg(test)]
+mod headers_tests;
 #[cfg(test)]
 mod hidden_text_tests;
 #[cfg(test)]
@@ -204,7 +251,11 @@ mod public_keys_tests;
 #[cfg(test)]
 mod recurrence_tests;
 #[cfg(test)]
+mod relay_without_sign_in_tests;
+#[cfg(test)]
 mod rule_tests;
+#[cfg(test)]
+mod rules_waiting_tests;
 #[cfg(test)]
 mod search_advanced_tests;
 #[cfg(test)]
@@ -218,11 +269,15 @@ mod search_suggest_tests;
 #[cfg(test)]
 mod search_tests;
 #[cfg(test)]
+mod send_warnings_tests;
+#[cfg(test)]
 mod sender_warnings_tests;
 #[cfg(test)]
 mod shown_tests;
 #[cfg(test)]
 mod snooze_tests;
+#[cfg(test)]
+mod unsubscribe_tests;
 #[cfg(test)]
 mod well_known_folder_tests;
 
@@ -243,3 +298,5 @@ mod tests {
         assert!(!contains_ci("Quarterly", "report"));
     }
 }
+#[cfg(test)]
+mod address_tests;

@@ -170,6 +170,7 @@ pub fn held(m: &Message) -> u64 {
         texts(&m.categories),
         texts(&m.warnings_dismissed),
         m.headers.iter().map(|(k, v)| text(k).saturating_add(text(v))).fold(0u64, u64::saturating_add),
+        m.header_block.data.len() as u64,
         m.attachments
             .iter()
             .map(|a| text(&a.name).saturating_add(text(&a.mime)).saturating_add(text(&a.content_id)).saturating_add(a.data.len() as u64))
@@ -289,7 +290,13 @@ fn message_of<R: Read + Seek>(pst: &mut Pst<R>, m: &mailcraft_pst::Message, item
         out.references = parsed.references;
         out.importance = parsed.importance;
         out.categories = parsed.categories;
-        out.headers = parsed.headers;
+        // (Not `hops_kept`: no server of the owner's read it, and its hops may all be the file's
+        // giver's, #2059.)
+        (out.headers, out.header_block) = (parsed.headers, parsed.header_block);
+        out.read_header = parsed.read_header;
+        // The lines past the limit are lost, so a rule with words in the header can't tell (#566).
+        out.read_header_cut = parsed.read_header_cut || cut.len() < h.len();
+        out.headers_cut = parsed.headers_cut;
     }
 
     // Who it is from: who it was sent for, else who sent it.
@@ -376,7 +383,7 @@ fn message_of<R: Read + Seek>(pst: &mut Pst<R>, m: &mailcraft_pst::Message, item
         _ => None,
     };
     if let Some(s) = sensitivity
-        && !out.headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("sensitivity"))
+        && !out.has_header("Sensitivity")
     {
         out.headers.push(("Sensitivity".to_string(), s.to_string()));
     }
@@ -396,11 +403,11 @@ fn message_of<R: Read + Seek>(pst: &mut Pst<R>, m: &mailcraft_pst::Message, item
     // The body.
     body(pst, m, &text, item, &mut out)?;
 
-    // Attachments, and the pictures the HTML shows by content id (looked for once).
-    let cids = mailcraft_model::shown::shown_ids(out.body.html.as_deref().unwrap_or(""));
+    // Attachments, then the pictures the HTML draws by content id (laid out once).
     for a in &m.attachments {
-        attachment(pst, a, &text, item, depth, &cids, &mut out)?;
+        attachment(pst, a, &text, item, depth, &mut out)?;
     }
+    mailcraft_mime_model::mark_drawn(&mut out);
     if class.to_ascii_lowercase().starts_with("ipm.note.smime") {
         item.note("signed or encrypted (S/MIME): kept as it was, can't be read yet".to_string());
     }
@@ -692,7 +699,6 @@ fn attachment<R: Read + Seek>(
     text: &Text,
     item: &mut Item,
     depth: usize,
-    cids: &mailcraft_model::shown::ShownIds,
     out: &mut Message,
 ) -> Result<(), PstError> {
     let p = &a.properties;
@@ -749,9 +755,10 @@ fn attachment<R: Read + Seek>(
             };
             let mut file = Attachment::new(name, mime, data);
             if !content_id.is_empty() {
-                // Shown in place only as a picture an `<img>` asks for (or the file hides), by its
-                // bytes: a file of any other kind is listed, whatever the body or the file says.
-                file.inline = mailcraft_model::shown::is_picture(&file.data) && (hidden || cids.shows(&content_id));
+                // Shown in place only as a picture the file hides, or one the body draws
+                // (`mark_drawn`), by its bytes: a file of any other kind is listed, whatever the
+                // body or the file says.
+                file.inline = mailcraft_model::shown::is_picture(&file.data) && hidden;
                 file.content_id = content_id;
             }
             out.attachments.push(file);

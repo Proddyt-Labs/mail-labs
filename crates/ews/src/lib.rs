@@ -76,7 +76,13 @@ pub mod items;
 pub mod ntlm;
 #[deny(missing_docs)]
 #[cfg_attr(not(test), deny(clippy::indexing_slicing, clippy::arithmetic_side_effects))]
+pub mod oab;
+#[deny(missing_docs)]
+#[cfg_attr(not(test), deny(clippy::indexing_slicing, clippy::arithmetic_side_effects))]
 pub mod reply;
+#[deny(missing_docs)]
+#[cfg_attr(not(test), deny(clippy::indexing_slicing, clippy::arithmetic_side_effects))]
+pub mod resolve;
 #[deny(missing_docs)]
 #[cfg_attr(not(test), deny(clippy::indexing_slicing, clippy::arithmetic_side_effects))]
 pub mod run;
@@ -94,14 +100,20 @@ pub mod standin;
 #[cfg(any(test, feature = "stand-in"))]
 pub mod standin_autodiscover;
 #[cfg(any(test, feature = "stand-in"))]
+pub mod standin_directory;
+#[cfg(any(test, feature = "stand-in"))]
 pub mod standin_mail;
 #[cfg(any(test, feature = "stand-in"))]
 pub mod standin_ntlm;
+#[cfg(any(test, feature = "stand-in"))]
+pub mod standin_oab;
 #[cfg(any(test, feature = "stand-in"))]
 pub mod standin_write;
 
 #[cfg(test)]
 mod delete_check_tests;
+#[cfg(test)]
+mod exchange2010_tests;
 #[cfg(test)]
 mod hostile_tests;
 #[cfg(test)]
@@ -110,6 +122,10 @@ mod items_tests;
 mod mail_tests;
 #[cfg(test)]
 mod own_folders_tests;
+#[cfg(test)]
+mod recipients_cut_tests;
+#[cfg(test)]
+mod resolve_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -127,8 +143,9 @@ pub use error::{Error, PolicyReason, ResponseClass, ResponseCode};
 pub use folder::{DistinguishedFolder, FolderId, FolderInfo, GetFolder};
 pub use hierarchy::{HierarchyPage, SyncFolderHierarchy};
 pub use http::{EndpointError, HttpExchange, HttpRequest, HttpResponse, Method, Secret, TransportError};
-pub use items::{GetItemMime, ItemsPage, Shape, SyncFolderItems};
+pub use items::{GetItemMime, GetItemRecipients, ItemsPage, Recipients, Shape, SyncFolderItems};
 pub use ntlm::{Credentials as NtlmCredentials, NtlmError};
 pub use reply::{Message, Reply};
+pub use resolve::{Candidate, RecipientKind, ResolveNames, Resolved};
 pub use run::{failed_run, fetch_messages, sync_mail};
 pub use soap::{Element, Version};

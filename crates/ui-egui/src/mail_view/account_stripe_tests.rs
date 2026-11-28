@@ -26,7 +26,7 @@ fn window() -> (Window, Id, Id, Id) {
     let moved = s.mailbox.messages_in(inbox).map(|m| m.id).next().unwrap();
     s.run("mail.move", &json!({"id": moved, "folder": theirs})).unwrap();
     let mut harness = testing::window_on(s.mailbox, "view.mail");
-    harness.state_mut().auto_sync = false;
+    harness.state_mut().session.driver.set_auto_sync(false);
     harness.state_mut().execute("folder.select", json!({"id": inbox})).unwrap();
     let _ = harness.state_mut().execute("ui.dismissReminder", json!({"all": true}));
     harness.run_steps(3);
@@ -88,4 +88,18 @@ fn one_account_never_mixes() {
     assert!(mixes_accounts(&s));
     s.run("view.clearSearch", &json!({})).unwrap();
     assert!(!mixes_accounts(&s));
+}
+
+#[test]
+fn in_classic_light_the_selection_bar_is_beside_the_stripe_not_over_it() {
+    let (mut harness, _, _, moved) = window();
+    harness.state_mut().execute("ui.theme", json!({"value": "classicLight"})).unwrap();
+    harness.state_mut().execute("view.search", json!({"query": "e", "scope": "everywhere"})).unwrap();
+    harness.state_mut().execute("mail.select", json!({"id": moved})).unwrap();
+    harness.run_steps(3);
+    let stripe = harness.state().hit.rect("messageAccountColor", moved).unwrap();
+    let bar = harness.state().hit.rect("messageSelectionBar", moved).unwrap();
+    assert!(bar.min.x >= stripe.max.x, "bar {bar:?} clear of stripe {stripe:?}");
+    let row = harness.state().hit.rect("message", moved).unwrap();
+    assert!(row.contains_rect(bar), "{bar:?} in {row:?}");
 }

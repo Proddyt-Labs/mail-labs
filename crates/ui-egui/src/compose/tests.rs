@@ -79,6 +79,38 @@ fn kinds(h: &Window) -> Vec<ListKind> {
     h.state().session.compose.as_ref().unwrap().body.text().paragraphs().iter().map(|p| p.list).collect()
 }
 
+/// Inline compose keeps its actions and status separate at compact widths.
+#[test]
+fn the_inline_toolbar_fits_its_pane() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = app();
+    app.execute("mail.new", json!({})).unwrap();
+    let mut h = window(app);
+    h.state_mut().execute("ui.dismissReminder", json!({"all": true})).unwrap();
+    for width in [850.0, 1100.0, 1280.0] {
+        h.set_size(egui::vec2(width, 760.0));
+        h.run_steps(5);
+        let mut parts: Vec<_> = ["Send", "Attach", "Save draft", "Discard"]
+            .into_iter()
+            .map(|label| {
+                let rect = h.query_all_by_label(label).map(|node| node.rect()).max_by(|a, b| a.min.y.total_cmp(&b.min.y)).unwrap();
+                (label, rect)
+            })
+            .collect();
+        parts.push(("New message", h.get_by_label("New message").rect()));
+        parts.push(("Pop Out", h.state().hit.rect("composePopOut", 0).unwrap()));
+        let body = h.state().hit.rect("composeBody", 0).unwrap();
+        assert!(body.height() > 150.0, "{width}: the toolbar squeezed the body to {body:?}");
+        for (i, (label, rect)) in parts.iter().enumerate() {
+            assert!(rect.is_positive() && rect.max.x <= width, "{width}: {label}: {rect:?}");
+            for (other, other_rect) in parts.iter().skip(i + 1) {
+                assert!(!rect.shrink(0.5).intersects(other_rect.shrink(0.5)), "{width}: {label} over {other}");
+            }
+        }
+    }
+}
+
 #[test]
 fn typing_and_the_formatting_keys() {
     let mut h = writing();
@@ -579,15 +611,40 @@ fn a_long_message_lays_out_only_what_changes() {
 
 /// A clipboard that takes HTML, as the desktop's does: what was put on it, and what it holds.
 #[derive(Clone, Default)]
-struct Board(std::rc::Rc<std::cell::RefCell<(Vec<(String, String)>, Option<String>)>>);
+struct Board(std::rc::Rc<std::cell::RefCell<(Vec<(String, String)>, Option<String>)>>, std::rc::Rc<std::cell::RefCell<Vec<String>>>);
 
 impl crate::RichClipboard for Board {
     fn put(&self, html: &str, text: &str) -> Result<(), String> {
         self.0.borrow_mut().0.push((html.to_string(), text.to_string()));
         Ok(())
     }
+    fn put_text(&self, text: &str) -> Result<(), String> {
+        self.1.borrow_mut().push(text.to_string());
+        Ok(())
+    }
     fn html(&self) -> Option<String> {
         self.0.borrow().1.clone()
+    }
+}
+
+#[test]
+fn copying_or_cutting_plain_text_message_uses_the_system_clipboard() {
+    for event in [Event::Copy, Event::Cut] {
+        let board = Board::default();
+        let mut a = app();
+        a.services.clipboard = Some(Box::new(board.clone()));
+        a.execute("mail.new", json!({"to": "maya@lumen.example"})).unwrap();
+        a.execute("compose.set", json!({"body": "alpha beta"})).unwrap();
+        a.execute("compose.formatPlain", json!({})).unwrap();
+        a.execute("compose.select", json!({"from": 6, "to": 10})).unwrap();
+        a.want_body_focus();
+        let mut h = window(a);
+        h.run_steps(2);
+        h.event(event);
+        h.run_steps(2);
+        assert_eq!(board.1.borrow().last().map(String::as_str), Some("beta"));
+        assert!(board.0.borrow().0.is_empty(), "a plain-text message has no rich clipboard payload");
+        assert!(!h.output().platform_output.commands.iter().any(|c| matches!(c, egui::OutputCommand::CopyText(_))));
     }
 }
 
@@ -763,12 +820,22 @@ fn typing_goes_on_after_the_window_was_left_and_came_back_to() {
     assert_eq!(plain(&h), "Hello again!");
 }
 
-fn click(h: &mut Window, at: egui::Pos2) {
+pub(super) fn click(h: &mut Window, at: egui::Pos2) {
     h.event(Event::PointerMoved(at));
     h.event(Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
     h.step();
     h.event(Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run_steps(3);
+}
+
+#[test]
+fn the_recipient_field_cannot_extend_past_its_right_edge() {
+    let mut h = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(egui::vec2(96.0, 72.0)).build_ui(|ui| {
+        let field = super::line(ui, "Titkos másolat", 120.0, 40.0);
+        assert!(field.width() >= 0.0, "{field:?}");
+        assert!(field.max.x <= ui.max_rect().max.x, "{field:?}");
+    });
+    h.run_steps(2);
 }
 
 /// A long To line (Reply All) takes a click at its right end, where its last address is: the
@@ -920,4 +987,22 @@ fn an_html_signature_is_shown_as_it_goes_out_until_edited_as_text() {
     assert!(!unedited(&h));
     // Edited, it is the copy that goes out: there is no way back to the HTML.
     assert!(h.state().hit.rect("composeSignatureAsHtml", 0).is_none());
+}
+
+/// An HTML signature that comes from a linked file has no "Edit signature as text" link: the
+/// file is read again for each message, so what was edited here would be lost (#1878).
+#[test]
+fn a_signature_from_a_linked_file_has_no_edit_as_text_link() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("signature.html");
+    std::fs::write(&path, HTML_SIGNATURE).unwrap();
+    let mut a = app();
+    a.execute("signature.html", json!({"name": "Standard", "html": HTML_SIGNATURE})).unwrap();
+    a.execute("ui.signatureFile", json!({"name": "Standard", "path": path, "enabled": true})).unwrap();
+    a.execute("mail.new", json!({"to": "maya@lumen.example", "body": "Hello"})).unwrap();
+    a.execute("compose.formatHtml", json!({})).unwrap();
+    let mut h = window(a);
+    h.run_steps(2);
+    assert!(h.state().hit.rect("composeSignature", 0).is_some(), "the file signature is not shown");
+    assert!(h.state().hit.rect("composeSignatureAsText", 0).is_none());
 }

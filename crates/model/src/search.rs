@@ -6,7 +6,8 @@
 //! of a term excludes what it matches. Keywords: `from`, `to`, `cc`, `subject`, `body`,
 //! `category`, `attachment` (file name), `has:attachment`, `is:unread|read|flagged|important`,
 //! `gmail:primary|social|promotions|updates|forums` (Gmail's inbox categories, #911: not the
-//! owner's own, which are `category:`),
+//! owner's own, which are `category:`), `label:` (a Gmail account's labels of a message, #1153:
+//! anywhere in the label's path, Gmail's own by their name without the backslash, `label:important`),
 //! `importance:high|normal|low`, `before:`, `after:`, `on:` (dates, `YYYY-MM-DD` or `M/D/YYYY`),
 //! and `received:` with a day, a range of days as Outlook writes one (`received:10/1/2026..10/22/2026`,
 //! both days in it, #329), or one side of one (`received:>=2026-10-01`, `<=`, and `>` and `<`, the
@@ -29,7 +30,7 @@
 
 use std::ops::{Bound, Range, RangeBounds};
 
-use mailcraft_time::{Date, DateTime, Timestamp, Weekday};
+use mailcraft_time::{Date, DateTime, Timestamp, Weekday, Zone};
 
 use crate::words::{self, ATTACHMENT, BODY, CC, FROM, SUBJECT, TO};
 use crate::{Address, Category, FlagStatus, Importance, Message, Rgb, contains_ci};
@@ -62,6 +63,8 @@ enum Kind {
     Category(String),
     /// One of Gmail's inbox categories (#911).
     Gmail(crate::GmailCategory),
+    /// Text in one of Gmail's labels of a message (#1153).
+    Label(String),
     HasAttachment,
     Unread,
     Read,
@@ -321,6 +324,7 @@ fn keyword_kind(body: &str) -> Option<Kind> {
         "body" => words_in(BODY, &v),
         "category" | "categories" => Kind::Category(v),
         "gmail" => Kind::Gmail(crate::GmailCategory::parse(&v)?),
+        "label" | "labels" => Kind::Label(v),
         "attachment" | "attachments" => words_in(ATTACHMENT, &v),
         "has" | "hasattachment" | "hasattachments" => match v.to_ascii_lowercase().as_str() {
             "attachment" | "attachments" | "yes" | "true" => Kind::HasAttachment,
@@ -418,8 +422,24 @@ const MAX_SUGGESTED_NAME: usize = 256;
 
 /// The keywords offered while the start of one is typed: each once, without the other names it
 /// may be written by (`categories:`).
-const OFFERED: &[&str] =
-    &["from", "to", "cc", "subject", "body", "category", "gmail", "attachment", "has", "is", "importance", "before", "after", "on", "received"];
+const OFFERED: &[&str] = &[
+    "from",
+    "to",
+    "cc",
+    "subject",
+    "body",
+    "category",
+    "gmail",
+    "label",
+    "attachment",
+    "has",
+    "is",
+    "importance",
+    "before",
+    "after",
+    "on",
+    "received",
+];
 
 /// What `is:` and `has:` take.
 const IS_VALUES: &[&str] = &["unread", "read", "flagged", "important"];
@@ -753,6 +773,8 @@ pub(crate) const KEYWORDS: &[&str] = &[
     "category",
     "categories",
     "gmail",
+    "label",
+    "labels",
     "attachment",
     "attachments",
     "has",
@@ -974,6 +996,41 @@ impl Query {
         self.matches_with(m, offset, |_| None)
     }
 
+    /// The half-open UTC bounds for a single positive, resolved received-date term.
+    pub fn received_period(&self, zone: Zone) -> Option<(Option<Timestamp>, Option<Timestamp>)> {
+        let [Term { kind: Kind::Received(first, last), negate: false }] = self.terms.as_slice() else { return None };
+        if zone.is_local() {
+            return None;
+        }
+        let next = |day: Date| {
+            let after = day.add_days(1);
+            (after > day).then_some(after)
+        };
+        let boundary = |day: Date| {
+            let at = zone.instant(DateTime::at_midnight(day));
+            let local = |t| DateTime::from_timestamp(t, zone.offset_at(t)).date;
+            // Some historical rollbacks cross midnight twice. A single UTC boundary
+            // cannot describe which side of that local date those instants belong to.
+            let crosses_back =
+                zone.transitions(at - 172_800, at + 172_800).iter().any(|change| local(change.at - 1) >= day && local(change.at) < day);
+            (local(at) == day && local(at - 1) < day && !crosses_back).then_some(at)
+        };
+        let from = match *first {
+            Bound::Included(day) => Some(boundary(day)?),
+            Bound::Excluded(day) => Some(boundary(next(day)?)?),
+            Bound::Unbounded => None,
+        };
+        let until = match *last {
+            Bound::Included(day) => Some(boundary(next(day)?)?),
+            Bound::Excluded(day) => Some(boundary(day)?),
+            Bound::Unbounded => None,
+        };
+        if matches!((from, until), (Some(a), Some(b)) if a >= b) {
+            return None;
+        }
+        Some((from, until))
+    }
+
     /// [`Query::matches_in`], with what `known` says of a term (whether `m` has what term `i` asks
     /// for, before its `-`; a word index's answer) in place of looking at `m`; `None`: look.
     pub fn matches_with(&self, m: &Message, offset: impl Fn(Timestamp) -> i32, known: impl Fn(usize) -> Option<bool>) -> bool {
@@ -996,6 +1053,10 @@ impl Query {
                 }
                 Kind::Category(x) => m.categories.iter().any(|c| contains_ci(c, x)),
                 Kind::Gmail(c) => m.gmail_category == Some(*c),
+                Kind::Label(x) => {
+                    let x = x.trim_matches(|c: char| c == '"' || c.is_whitespace());
+                    !x.is_empty() && m.gmail_labels.iter().any(|l| contains_ci(crate::gmail::label_name(l), x))
+                }
                 Kind::HasAttachment => m.has_attachments(),
                 Kind::Unread => !m.read,
                 Kind::Read => m.read,

@@ -11,6 +11,8 @@ use super::*;
 use crate::Services;
 
 const NOW: i64 = 1_791_993_600;
+/// The hop at which the account's server took the mail in: what it wrote of it lies above.
+const INTAKE: &str = "from mail.sender.example (mail.sender.example [198.51.100.7]) by mx.example.org with ESMTPS id 1";
 
 fn png() -> Vec<u8> {
     let mut out = std::io::Cursor::new(Vec::new());
@@ -37,7 +39,12 @@ fn window(answer: impl Fn(&str) -> Result<Vec<u8>, String> + 'static) -> (MailAp
         date: NOW,
         // On the server (mail from a file is never vouched for).
         uid: 1,
-        headers: vec![("Authentication-Results".into(), format!("mx.example.org; dmarc=pass header.from={}", from.rsplit('@').next().unwrap_or("")))],
+        headers: vec![
+            ("Authentication-Results".into(), format!("mx.example.org; dmarc=pass header.from={}", from.rsplit('@').next().unwrap_or(""))),
+            ("Received".into(), INTAKE.into()),
+        ],
+        // Split as a message read by this version is.
+        hops_kept: true,
         ..Default::default()
     };
     mailbox.add_message(mail(sent, "avery@lumen-works.example", "Grace@Shop.example")).unwrap();
@@ -256,6 +263,85 @@ fn who_sent_mail_went_to_needs_no_word_from_the_server() {
     }
     assert!(got);
     assert_eq!(*asked.lock().unwrap(), ["ada@example.org"]);
+}
+
+/// One frame of People: which of `shown` have a picture.
+fn people(app: &mut MailApp, ctx: &egui::Context, shown: &[Address]) -> Vec<bool> {
+    let mut got = Vec::new();
+    ctx.run_ui(egui::RawInput::default(), |ui| got = shown.iter().map(|who| contact_picture(app, ui.ctx(), who).is_some()).collect())
+        .drop_without_applying_deltas();
+    got
+}
+
+#[test]
+fn a_contact_has_their_picture_in_people_without_any_mail() {
+    let (mut app, asked, _) = window(|_| Ok(png()));
+    app.session.mailbox.add_contact(Contact {
+        display_name: "Lin".into(),
+        emails: vec![Labeled::new("work", "lin@studio.example")],
+        ..Default::default()
+    });
+    let long = format!("{}@studio.example", "x".repeat(400));
+    app.session.mailbox.add_contact(Contact { display_name: "Long".into(), emails: vec![Labeled::new("work", &long)], ..Default::default() });
+    // A contact nobody has mail from, an address that is nobody's contact, and a contact's
+    // address too long to be anybody's.
+    let shown = [Address::new("Lin", "lin@studio.example"), Address::new("", "stranger@spam.example"), Address::new("Long", long)];
+    let ctx = egui::Context::default();
+    for _ in 0..4 {
+        people(&mut app, &ctx, &shown);
+    }
+    assert_eq!(*asked.lock().unwrap(), ["lin@studio.example"]);
+    assert_eq!(people(&mut app, &ctx, &shown), [true, false, false]);
+    // Turned off, nobody is asked again.
+    app.run("ui.senderImages", json!({"value": false})).unwrap();
+    for _ in 0..4 {
+        assert_eq!(people(&mut app, &ctx, &shown), [false; 3]);
+    }
+    assert_eq!(*asked.lock().unwrap(), ["lin@studio.example"]);
+}
+
+#[test]
+fn back_online_only_who_is_on_screen_then_is_asked_for() {
+    let (mut app, asked, _) = window(|_| Ok(png()));
+    app.session.mailbox.add_contact(Contact {
+        display_name: "Lin".into(),
+        emails: vec![Labeled::new("work", "lin@studio.example")],
+        ..Default::default()
+    });
+    let ctx = egui::Context::default();
+    let [ada, lin] = [Address::new("Ada", "ada@example.org"), Address::new("Lin", "lin@studio.example")];
+    // Working offline, Ada is on screen, then scrolled away for Lin; back online, Lin alone is.
+    app.session.prefs.offline = true;
+    for _ in 0..4 {
+        people(&mut app, &ctx, std::slice::from_ref(&ada));
+    }
+    people(&mut app, &ctx, std::slice::from_ref(&lin));
+    assert!(asked.lock().unwrap().is_empty());
+    // Nor does the window repaint, frame after frame, for whoever it can't ask about.
+    assert!(!ctx.requested_repaint_last_pass());
+    app.session.prefs.offline = false;
+    for _ in 0..4 {
+        people(&mut app, &ctx, std::slice::from_ref(&lin));
+    }
+    assert_eq!(*asked.lock().unwrap(), ["lin@studio.example"]);
+}
+
+#[test]
+fn a_contacts_picture_in_people_lends_nothing_to_mail_the_server_doesnt_vouch_for() {
+    let (mut app, asked, mut shown) = window(|_| Ok(png()));
+    shown[0].headers.clear();
+    let ctx = egui::Context::default();
+    for _ in 0..4 {
+        people(&mut app, &ctx, &[Address::new("Ada", "ada@example.org")]);
+    }
+    assert_eq!(people(&mut app, &ctx, &[Address::new("Ada", "ada@example.org")]), [true]);
+    // Her picture is in hand, and still a `From:` with her address and no word from the server
+    // keeps her initials in the list.
+    for _ in 0..4 {
+        frame(&mut app, &ctx, &shown);
+    }
+    assert_eq!(frame(&mut app, &ctx, &shown), [false, true, false, false]);
+    assert_eq!(*asked.lock().unwrap(), ["ada@example.org", "grace@shop.example"]);
 }
 
 #[test]

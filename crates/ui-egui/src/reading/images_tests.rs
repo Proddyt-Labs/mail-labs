@@ -31,7 +31,11 @@ fn message(count: u32, w: u32, h: u32, shown: u32) -> Message {
         received: NOW - 3_600,
         read: true,
         body: Body { text: String::new(), html: Some(html) },
-        headers: vec![("Authentication-Results".into(), "mx.example.org; dmarc=pass header.from=example.org".into())],
+        headers: vec![
+            ("Authentication-Results".into(), "mx.example.org; dmarc=pass header.from=example.org".into()),
+            ("Received".into(), "from mail.example.org (mail.example.org [198.51.100.7]) by mx.example.org with ESMTPS id 1".into()),
+        ],
+        hops_kept: true,
         attachments: (0..count)
             .map(|i| Attachment {
                 content_id: format!("p{i}@example.org"),
@@ -56,7 +60,7 @@ fn window(m: Message) -> (egui_kittest::Harness<'static, MailApp>, u64, u64) {
     let id = mailbox.add_message(m).unwrap();
     let mut app = MailApp::new(Session::at(mailbox, NOW, 0), Services::default());
     app.autosave = false;
-    app.auto_sync = false;
+    app.session.driver.set_auto_sync(false);
     let mut harness =
         egui_kittest::Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(egui::vec2(1280.0, 800.0)).build_ui_state(
             |ui, app: &mut MailApp| {
